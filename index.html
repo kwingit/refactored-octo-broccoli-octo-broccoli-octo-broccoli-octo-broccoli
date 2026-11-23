@@ -101,19 +101,19 @@ small{color:var(--mut);display:block;margin-top:18px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=s=>document.querySelector(s), R=Math.PI/180;
-const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1,kind:'video',cam:90,conv:0,bri:1,q:1.5,slide:0};
+const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1,kind:'video',cam:90,conv:0,bri:1,q:1.5,slide:0,pit:0};
 const LAY=['sbs','tb','mono'], LAYN={sbs:'3D side-by-side',tb:'3D top-bottom',mono:'2D flat'};
 const video=document.createElement('video');
 video.playsInline=true;video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');
 video.loop=true;video.preload='auto';
 let renderer,scene,camera,meshes=[],started=false,objUrl=null,hideT=0,seeking=false;
-const dev=new THREE.Quaternion(),yawQ=new THREE.Quaternion(),eul=new THREE.Euler(),Y=new THREE.Vector3(0,1,0);
+const dev=new THREE.Quaternion(),yawQ=new THREE.Quaternion(),eul=new THREE.Euler(),Y=new THREE.Vector3(0,1,0),X=new THREE.Vector3(1,0,0),pitQ=new THREE.Quaternion();
 
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,3000)}
 function fmt(s){s=Math.max(0,s|0);return(s/60|0)+':'+String(s%60).padStart(2,'0')}
 
 function init(){
-  renderer=new THREE.WebGLRenderer({canvas:$('#cv')});
+  renderer=new THREE.WebGLRenderer({canvas:$('#cv'),antialias:false,alpha:false,stencil:false,powerPreference:'high-performance'});
   renderer.setPixelRatio(S.q);
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(90,1,.1,1100);
@@ -123,7 +123,10 @@ function init(){
 }
 function resize(){if(renderer)renderer.setSize(innerWidth,innerHeight,false)}
 
-let tex=null,texKey='',img=null,imgT=0;
+let tex=null,texKey='',img=null,imgT=0,newFrame=false,lastT=-1,uiT=0;
+const rv='requestVideoFrameCallback' in HTMLVideoElement.prototype;
+if(rv){const vf=()=>{newFrame=true;video.requestVideoFrameCallback(vf)};video.requestVideoFrameCallback(vf)}
+video.addEventListener('loadeddata',()=>{newFrame=true});
 function getTex(){
   const key=S.kind==='img'?img.src:'video';
   if(tex&&key===texKey)return tex;
@@ -132,8 +135,8 @@ function getTex(){
     let src=img;const mx=renderer.capabilities.maxTextureSize,w=img.naturalWidth,h=img.naturalHeight;
     if(Math.max(w,h)>mx){const k=mx/Math.max(w,h),c=document.createElement('canvas');c.width=Math.floor(w*k);c.height=Math.floor(h*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);src=c}
     tex=new THREE.Texture(src);tex.needsUpdate=true;
-  }else tex=new THREE.VideoTexture(video);
-  tex.minFilter=tex.magFilter=THREE.LinearFilter;tex.generateMipmaps=false;texKey=key;return tex;
+  }else{tex=new THREE.Texture(video);newFrame=true}
+  tex.flipY=false;tex.minFilter=tex.magFilter=THREE.LinearFilter;tex.generateMipmaps=false;texKey=key;return tex;
 }
 function applyView(){meshes.forEach((m,e)=>{m.rotation.y=(e?-1:1)*S.conv*R;m.material.color.setScalar(S.bri)})}
 function build(){
@@ -146,7 +149,7 @@ function build(){
     if(!half)g.rotateY(-Math.PI/2);
     const eye=S.swap?1-e:e,uv=g.attributes.uv;
     for(let i=0;i<uv.count;i++){let u=uv.getX(i),v=uv.getY(i);
-      if(S.layout==='sbs')u=u*.5+eye*.5;else if(S.layout==='tb')v=v*.5+(eye?0:.5);
+      v=1-v;if(S.layout==='sbs')u=u*.5+eye*.5;else if(S.layout==='tb')v=v*.5+(eye?.5:0);
       uv.setXY(i,u,v)}
     const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:t}));
     m.layers.set(e+1);scene.add(m);meshes.push(m);
@@ -157,9 +160,13 @@ function build(){
 function frame(){
   requestAnimationFrame(frame);
   if(!started)return;
-  if(S.gyro){yawQ.setFromAxisAngle(Y,S.yaw);camera.quaternion.copy(yawQ).multiply(dev)}
+  if(S.gyro){yawQ.setFromAxisAngle(Y,S.yaw);camera.quaternion.copy(yawQ).multiply(dev).multiply(pitQ.setFromAxisAngle(X,S.pit))}
   else{eul.set(S.lat,S.lon,0,'YXZ');camera.quaternion.setFromEuler(eul)}
   if(S.kind==='img'&&S.slide&&lib.length>1&&performance.now()-imgT>S.slide*1000){imgT=performance.now();step(1)}
+  if(S.kind==='video'&&tex&&video.readyState>=2){
+    if(rv){if(newFrame){newFrame=false;tex.needsUpdate=true}}
+    else if(video.currentTime!==lastT){lastT=video.currentTime;tex.needsUpdate=true}
+  }
   vrUpdate();
   const w=innerWidth,h=innerHeight;
   renderer.setScissorTest(true);
@@ -172,9 +179,12 @@ function frame(){
     renderer.setViewport(e*vw,0,vw,h);renderer.setScissor(e*vw,0,vw,h);
     renderer.clear();renderer.render(scene,camera);
   }
-  if(!seeking&&video.duration){$('#seek').value=video.currentTime/video.duration*1000}
-  $('#cur').textContent=fmt(video.currentTime);$('#dur').textContent=fmt(video.duration||0);
-  $('#pp').textContent=video.paused?'▶':'⏸';
+  const nw=performance.now();
+  if(nw-uiT>250){uiT=nw;
+    if(!seeking&&video.duration){$('#seek').value=video.currentTime/video.duration*1000}
+    $('#cur').textContent=fmt(video.currentTime);$('#dur').textContent=fmt(video.duration||0);
+    $('#pp').textContent=video.paused?'▶':'⏸';
+  }
 }
 
 /* head tracking */
@@ -205,7 +215,7 @@ async function setGyro(on,quiet){
   chips();
 }
 function recenter(){
-  if(S.gyro){eul.setFromQuaternion(dev,'YXZ');S.yaw=-eul.y}else{S.lon=0;S.lat=0}
+  if(S.gyro){eul.setFromQuaternion(dev,'YXZ');S.yaw=-eul.y;pd.set(0,0,-1).applyQuaternion(dev);S.pit=-Math.asin(Math.max(-1,Math.min(1,pd.y)))}else{S.lon=0;S.lat=0;S.pit=0}
 }
 
 /* UI */
@@ -243,7 +253,7 @@ cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,m:0};cv.setP
 cv.addEventListener('pointermove',e=>{
   if(!drag)return;
   const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;drag.m+=Math.abs(dx)+Math.abs(dy);
-  if(S.gyro)S.yaw+=dx*.005;
+  if(S.gyro){S.yaw+=dx*.005;S.pit=Math.max(-1.4,Math.min(1.4,S.pit+dy*.005))}
   else{S.lon+=dx*.005;S.lat=Math.max(-1.5,Math.min(1.5,S.lat+dy*.005))}
 });
 cv.addEventListener('pointerup',()=>{
@@ -255,7 +265,7 @@ cv.addEventListener('pointerup',()=>{
 function guess(name){
   const n=name.toLowerCase();
   S.fov=/360/.test(n)?360:180;
-  S.layout=/(^|[^a-z])(tb|ou|topbottom|top-bottom|overunder|over-under)([^a-z]|$)/.test(n)?'tb':/(^|[^a-z])(mono|2d)([^a-z]|$)/.test(n)?'mono':'sbs';
+  S.layout=/(^|[^a-z])(tb|ou|topbottom|top-bottom|overunder|over-under)([^a-z]|$)/.test(n)?'tb':/(^|[^a-z])(mono|2d)([^a-z]|$)/.test(n)?'mono':/(^|[^a-z])(sbs|lr|3dh|3d)([^a-z]|$)/.test(n)?'sbs':/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/.test(n)?'mono':'sbs';
   S.swap=false;
 }
 function openVideo(src,name){
@@ -316,6 +326,9 @@ function renderSheet(){
   SLD.forEach(([k,t,mn,mx,fm])=>{const d=el('div','sl'),s=el('span','',t+': '+fm(S[k])),i=el('input');
     i.type='range';i.min=mn;i.max=mx;i.step=(mx-mn)/200;i.value=S[k];
     i.oninput=()=>{S[k]=+i.value;s.textContent=t+': '+fm(S[k]);applyView()};d.append(s,i);sh.appendChild(d)});
+  const q=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
+  sh.appendChild(el('h3','','Info'));
+  sh.appendChild(el('div','',S.kind==='img'&&img?img.naturalWidth+'×'+img.naturalHeight+' photo':video.videoWidth+'×'+video.videoHeight+(q?' · dropped '+q.droppedVideoFrames+' of '+q.totalVideoFrames+' frames':'')));
   sh.appendChild(el('h3','','Files'));
   const r=el('div','chips');[['⬆ Up',up],['➕ Add',()=>$('#addf').click()]].forEach(([a,f])=>{const b=el('button','chip',a);b.onclick=f;r.appendChild(b)});sh.appendChild(r);
   ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)});
