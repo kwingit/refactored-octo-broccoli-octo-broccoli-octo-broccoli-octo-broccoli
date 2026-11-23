@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VR Video Player</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🥽</text></svg>">
+<style>
+:root{--bg:#f4f5f7;--fg:#15171a;--card:#fff;--mut:#6b7280;--acc:#4a6cf7;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1013;--fg:#eef0f3;--card:#1a1d22;--mut:#9aa1ab;--acc:#7b94ff}}
+:root[data-theme="dark"]{--bg:#0e1013;--fg:#eef0f3;--card:#1a1d22;--mut:#9aa1ab;--acc:#7b94ff}
+html{height:100%}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
+[hidden]{display:none!important}
+#home{max-width:520px;margin:0 auto;padding:28px 20px;text-align:center}
+h1{font-size:24px;margin:8px 0 4px}
+p.s{color:var(--mut);margin:0 0 24px}
+.big{display:block;background:var(--acc);color:#fff;border-radius:18px;padding:26px 16px;font-size:20px;font-weight:600;cursor:pointer}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-top:18px;text-align:left}
+.card h2{font-size:14px;margin:0 0 8px;color:var(--mut);font-weight:600}
+.row{display:flex;gap:8px}
+input[type=text]{flex:1;min-width:0;font-size:16px;padding:10px;border-radius:10px;border:1px solid var(--mut);background:var(--bg);color:var(--fg)}
+button{font:inherit;color:inherit}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:600}
+.item{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid rgba(128,128,128,.25);padding:11px 2px;font-size:15px}
+small{color:var(--mut);display:block;margin-top:18px}
+#player{position:fixed;inset:0;background:#000;touch-action:none;color:#fff}
+#cv{width:100%;height:100%;display:block}
+.bar{position:absolute;left:0;right:0;padding:10px calc(14px + env(safe-area-inset-left,0px));background:linear-gradient(rgba(0,0,0,.65),rgba(0,0,0,0));transition:opacity .25s}
+#top{top:env(safe-area-inset-top,0px);display:flex;gap:10px;align-items:center}
+#bot{bottom:env(safe-area-inset-bottom,0px);background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.75))}
+.hide{opacity:0;pointer-events:none}
+#title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;opacity:.85}
+.chip{background:rgba(255,255,255,.18);border:0;border-radius:999px;padding:8px 14px;font-size:14px;color:#fff;white-space:nowrap}
+.chip.on{background:var(--acc)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:8px 0 2px;-webkit-overflow-scrolling:touch}
+.seek{display:flex;gap:10px;align-items:center;font-size:13px}
+#seek{flex:1;accent-color:#7b94ff}
+#pp{font-size:22px;background:none;border:0;color:#fff;width:36px}
+#toast{position:absolute;top:30%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;max-width:80%;text-align:center}
+</style>
+</head>
+<body>
+<div id="home">
+  <div style="font-size:48px">🥽</div>
+  <h1>VR Video Player</h1>
+  <p class="s">180° and 360° · side-by-side, top-bottom or flat</p>
+  <label class="big">Choose videos
+    <input id="file" type="file" accept="video/*,.mp4,.m4v,.mov" multiple hidden>
+  </label>
+  <label class="big" style="margin-top:12px;font-size:16px;padding:14px;background:var(--card);color:var(--fg)">…or choose a whole folder
+    <input id="folder" type="file" webkitdirectory hidden>
+  </label>
+  <input id="addf" type="file" accept="video/*,.mp4,.m4v,.mov" multiple hidden>
+  <button class="btn" id="tt" style="margin-top:16px;width:100%;padding:14px;font-size:16px">Test head tracking</button>
+  <div id="gs" style="font-size:14px;margin-top:8px;color:var(--mut)"></div>
+  <div class="card"><h2>KEYBOARD (WORKS WITHOUT LOOKING)</h2>
+    <div style="font-size:14px;line-height:1.7">Space: open the menu, then select what your head points at<br>Double-Space: recenter<br>← / →: skip 10 s · Enter: play / pause<br>Space on empty space: close the menu</div></div>
+  <div class="card" id="warn" hidden style="font-size:14px;line-height:1.5"><b>Using Chrome on iPhone?</b> Chrome on iOS often blocks the motion sensors, so head pointing won’t work. Open this same link in Safari for the full experience.</div>
+  <div class="card"><h2>TROUBLESHOOTING</h2><button class="btn" id="dg">Test motion &amp; full screen</button><pre id="dgo" style="white-space:pre-wrap;font:13px/1.5 ui-monospace,Menlo,monospace;margin:10px 0 0"></pre></div>
+  <div class="card" id="lan" hidden>
+    <h2>FROM THIS SERVER</h2>
+    <div id="list"></div>
+    <div class="row" style="margin-top:10px"><input id="url" type="text" placeholder="…or paste a video link"><button class="btn" id="go">Play</button></div>
+  </div>
+  <small>Format is guessed from the file name (180, 360, SBS, TB). You can change it while playing. MP4 or MOV works best on iPhone.</small>
+</div>
+
+<div id="player" hidden>
+  <canvas id="cv"></canvas>
+  <div class="bar" id="top"><button class="chip" id="back">‹ Back</button><div id="title"></div></div>
+  <div class="bar" id="bot">
+    <div class="seek"><button id="pp">▶</button><span id="cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="dur">0:00</span></div>
+    <div class="chips">
+      <button class="chip" id="bFov"></button>
+      <button class="chip" id="bLay"></button>
+      <button class="chip" id="bSplit"></button>
+      <button class="chip" id="bGyro">Head tracking</button>
+      <button class="chip" id="bSwap">Swap eyes</button>
+      <button class="chip" id="bRec">Recenter</button>
+      <button class="chip" id="bFs">Full screen</button>
+      <button class="chip" id="bFs">Full screen</button>
+    </div>
+  </div>
+  <div id="toast" hidden></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s), R=Math.PI/180;
+const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1};
+const LAY=['sbs','tb','mono'], LAYN={sbs:'3D side-by-side',tb:'3D top-bottom',mono:'2D flat'};
+const video=document.createElement('video');
+video.playsInline=true;video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');
+video.loop=true;video.preload='auto';
+let renderer,scene,camera,meshes=[],started=false,objUrl=null,hideT=0,seeking=false;
+const dev=new THREE.Quaternion(),yawQ=new THREE.Quaternion(),eul=new THREE.Euler(),Y=new THREE.Vector3(0,1,0);
+
+function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,3000)}
+function fmt(s){s=Math.max(0,s|0);return(s/60|0)+':'+String(s%60).padStart(2,'0')}
+
+function init(){
+  renderer=new THREE.WebGLRenderer({canvas:$('#cv')});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(90,1,.1,1100);
+  scene.add(camera);initVR();
+  addEventListener('resize',resize);resize();
+  frame();
+}
+function resize(){if(renderer)renderer.setSize(innerWidth,innerHeight,false)}
+
+function build(){
+  meshes.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.map.dispose();m.material.dispose()});
+  meshes=[];
+  const half=S.fov===180;
+  for(let e=0;e<2;e++){
+    const g=half?new THREE.SphereGeometry(500,64,48,Math.PI,Math.PI):new THREE.SphereGeometry(500,64,48);
+    g.scale(-1,1,1);
+    if(!half)g.rotateY(-Math.PI/2);
+    const t=new THREE.VideoTexture(video);
+    t.minFilter=t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;
+    const eye=S.swap?1-e:e;
+    if(S.layout==='sbs'){t.repeat.set(.5,1);t.offset.set(eye*.5,0)}
+    else if(S.layout==='tb'){t.repeat.set(1,.5);t.offset.set(0,eye?0:.5)}
+    const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:t}));
+    m.layers.set(e+1);scene.add(m);meshes.push(m);
+  }
+  chips();
+}
+
+function frame(){
+  requestAnimationFrame(frame);
+  if(!started)return;
+  if(S.gyro){yawQ.setFromAxisAngle(Y,S.yaw);camera.quaternion.copy(yawQ).multiply(dev)}
+  else{eul.set(S.lat,S.lon,0,'YXZ');camera.quaternion.setFromEuler(eul)}
+  vrUpdate();
+  const w=innerWidth,h=innerHeight;
+  renderer.setScissorTest(true);
+  const passes=S.split?2:1;
+  camera.fov=S.split?90:70;
+  for(let e=0;e<passes;e++){
+    const vw=w/passes;
+    camera.aspect=vw/h;camera.updateProjectionMatrix();
+    camera.layers.set(e+1);
+    renderer.setViewport(e*vw,0,vw,h);renderer.setScissor(e*vw,0,vw,h);
+    renderer.clear();renderer.render(scene,camera);
+  }
+  if(!seeking&&video.duration){$('#seek').value=video.currentTime/video.duration*1000}
+  $('#cur').textContent=fmt(video.currentTime);$('#dur').textContent=fmt(video.duration||0);
+  $('#pp').textContent=video.paused?'▶':'⏸';
+}
+
+/* head tracking */
+const q1=new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)),q0=new THREE.Quaternion(),zee=new THREE.Vector3(0,0,1);
+let gotOri=false;
+function onOri(e){
+  if(e.alpha==null)return;gotOri=true;
+  const o=(screen.orientation?screen.orientation.angle:(window.orientation||0))*R;
+  eul.set(e.beta*R,e.alpha*R,-e.gamma*R,'YXZ');
+  dev.setFromEuler(eul).multiply(q1).multiply(q0.setFromAxisAngle(zee,-o));
+}
+async function setGyro(on,quiet){
+  if(on){
+    try{
+      if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission){
+        const r=await DeviceOrientationEvent.requestPermission();
+        if(r!=='granted'){if(!quiet)toast('Motion access was declined. Check Safari settings.');return}
+      }
+    }catch(err){if(!quiet)toast('Head tracking is unavailable here.');return}
+    addEventListener('deviceorientation',onOri);S.gyro=true;gotOri=false;
+    setTimeout(()=>{if(S.gyro&&!gotOri){setGyro(false,true);toast('No motion data from this browser. Please open the page in Safari.')}},1800);
+    setTimeout(recenter,400);
+    try{localStorage.setItem('vrGyro','1')}catch(e){}
+  }else{
+    removeEventListener('deviceorientation',onOri);S.gyro=false;
+    try{localStorage.setItem('vrGyro','0')}catch(e){}
+  }
+  chips();
+}
+function recenter(){
+  if(S.gyro){eul.setFromQuaternion(dev,'YXZ');S.yaw=-eul.y}else{S.lon=0;S.lat=0}
+}
+
+/* UI */
+function chips(){
+  $('#bFov').textContent=S.fov+'°';
+  $('#bLay').textContent=LAYN[S.layout];
+  $('#bSplit').textContent=S.split?'Headset view':'Single view';
+  $('#bSplit').classList.toggle('on',S.split);
+  $('#bGyro').classList.toggle('on',S.gyro);
+  $('#bSwap').classList.toggle('on',S.swap);
+}
+function showBar(){
+  $('#top').classList.remove('hide');$('#bot').classList.remove('hide');
+  clearTimeout(hideT);
+  hideT=setTimeout(()=>{if(!video.paused){$('#top').classList.add('hide');$('#bot').classList.add('hide')}},4000);
+}
+$('#bFov').onclick=()=>{S.fov=S.fov===180?360:180;build();showBar()};
+$('#bLay').onclick=()=>{S.layout=LAY[(LAY.indexOf(S.layout)+1)%3];build();showBar()};
+$('#bSplit').onclick=()=>{S.split=!S.split;chips();showBar();if(S.split&&innerHeight>innerWidth)toast('Turn your phone to landscape')};
+$('#bGyro').onclick=()=>{setGyro(!S.gyro);showBar()};
+$('#bSwap').onclick=()=>{S.swap=!S.swap;build();showBar()};
+$('#bRec').onclick=()=>{recenter();showBar()};
+$('#bFs').onclick=()=>{toggleFS();showBar()};
+$('#pp').onclick=()=>{video.paused?video.play():video.pause();showBar()};
+$('#seek').addEventListener('input',e=>{seeking=true;if(video.duration)video.currentTime=e.target.value/1000*video.duration;showBar()});
+$('#seek').addEventListener('change',()=>seeking=false);
+$('#back').onclick=()=>{
+  video.pause();started=false;video.removeAttribute('src');video.load();
+  if(objUrl){URL.revokeObjectURL(objUrl);objUrl=null}
+  $('#player').hidden=true;$('#home').hidden=false;$('#file').value='';
+};
+let drag=null;
+const cv=$('#cv');
+cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,m:0};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;drag.m+=Math.abs(dx)+Math.abs(dy);
+  if(S.gyro)S.yaw+=dx*.005;
+  else{S.lon+=dx*.005;S.lat=Math.max(-1.5,Math.min(1.5,S.lat+dy*.005))}
+});
+cv.addEventListener('pointerup',()=>{
+  if(drag&&drag.m<8){const hidden=$('#bot').classList.contains('hide');if(hidden)showBar();else{$('#top').classList.add('hide');$('#bot').classList.add('hide')}}
+  drag=null;
+});
+
+/* opening a video */
+function guess(name){
+  const n=name.toLowerCase();
+  S.fov=/360/.test(n)?360:180;
+  S.layout=/(^|[^a-z])(tb|ou|topbottom|top-bottom|overunder|over-under)([^a-z]|$)/.test(n)?'tb':/(^|[^a-z])(mono|2d)([^a-z]|$)/.test(n)?'mono':'sbs';
+  S.swap=false;
+}
+function openVideo(src,name){
+  guess(name);
+  if(!renderer)init();
+  closeMenu();
+  video.onerror=()=>toast('This phone can’t play that file. Try MP4 or MOV (H.264 or HEVC).');
+  video.src=src;video.loop=S.loop;video.defaultPlaybackRate=video.playbackRate=S.speed;video.load();
+  $('#title').textContent=name;curName=name;
+  $('#home').hidden=true;$('#player').hidden=false;
+  S.lon=S.lat=0;build();started=true;resize();
+  try{if(localStorage.getItem('vrGyro')==='1')setGyro(true,true)}catch(e){}
+  video.play().then(showBar).catch(()=>{$('#top').classList.remove('hide');$('#bot').classList.remove('hide');toast('Tap ▶ to start')});
+  if(S.split&&innerHeight>innerWidth)toast('Turn your phone to landscape');
+  showBar();
+}
+['#file','#folder','#addf'].forEach(s=>$(s).addEventListener('change',e=>{addFiles(e.target.files);e.target.value=''}));
+
+/* ---------- VR menu: head pointer + keyboard ---------- */
+const CW=1024,CH=512,PW=4,PH=2,PD=2.6;
+let panel,ctex,pctx,ret,menu=false,page='main',btns=[],hovKey=null,hovX=0,needPlace=false,lastDraw=0,lib=[],libIdx=-1,curName='',sp=0,ac;
+let ex={src:'root',path:'',page:0,items:[]};
+const srvBase=location.protocol==='http:'?location.href.replace(/[^/]*$/,''):'';
+const pv=new THREE.Vector3(),pd=new THREE.Vector3(),pn=new THREE.Vector3(),pinv=new THREE.Quaternion();
+const SPEEDS=[.5,.75,1,1.25,1.5,2],FONT='-apple-system,system-ui,sans-serif';
+function beep(f,d){try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=f;g.gain.value=.08;o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+(d||.07))}catch(e){}}
+function initVR(){
+  const c=document.createElement('canvas');c.width=CW;c.height=CH;pctx=c.getContext('2d');
+  ctex=new THREE.CanvasTexture(c);ctex.minFilter=THREE.LinearFilter;ctex.generateMipmaps=false;
+  panel=new THREE.Mesh(new THREE.PlaneGeometry(PW,PH),new THREE.MeshBasicMaterial({map:ctex,transparent:true,depthTest:false}));
+  panel.renderOrder=10;panel.layers.set(1);panel.layers.enable(2);panel.visible=false;scene.add(panel);
+  ret=new THREE.Mesh(new THREE.RingGeometry(.009,.016,24),new THREE.MeshBasicMaterial({color:0xffffff,depthTest:false,transparent:true}));
+  ret.position.z=-1;ret.renderOrder=20;ret.layers.set(1);ret.layers.enable(2);ret.visible=false;camera.add(ret);
+  video.onended=()=>{if(!S.loop&&lib.length>1)step(1)};
+}
+function openMenu(){menu=true;page='main';needPlace=true;panel.visible=ret.visible=true;beep(880)}
+function closeMenu(){menu=false;hovKey=null;if(panel)panel.visible=ret.visible=false}
+function place(){
+  pd.set(0,0,-1).applyQuaternion(camera.quaternion);pd.y=Math.max(-.5,Math.min(.5,pd.y));pd.normalize();
+  panel.position.copy(pd).multiplyScalar(PD);panel.lookAt(0,0,0);panel.updateMatrixWorld();draw();
+}
+function vrUpdate(){
+  if(!menu)return;
+  if(needPlace){place();needPlace=false}
+  pd.set(0,0,-1).applyQuaternion(camera.quaternion);
+  pn.set(0,0,1).applyQuaternion(panel.quaternion);
+  const den=pd.dot(pn);let nh=null;
+  if(den<-1e-3){
+    const t=panel.position.dot(pn)/den;
+    if(t>0){
+      pv.copy(pd).multiplyScalar(t).sub(panel.position).applyQuaternion(pinv.copy(panel.quaternion).invert());
+      const px=(pv.x/PW+.5)*CW,py=(.5-pv.y/PH)*CH;
+      nh=btns.find(b=>b.act&&px>=b.x&&px<=b.x+b.w&&py>=b.y&&py<=b.y+b.h)||null;
+      if(nh)hovX=(px-nh.x)/nh.w;
+    }
+  }
+  const k=nh?nh.k:null,now=performance.now();
+  if(k!==hovKey||now-lastDraw>500||(nh&&nh.k==='seek')){hovKey=k;draw()}
+}
+function rr(x,y,w,h,r,f){const c=pctx;r=Math.min(r,w/2,h/2);c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();c.fillStyle=f;c.fill()}
+function add(k,t,x,y,w,h,act,on,left){const b={k,t,x,y,w,h,act,on,left};btns.push(b);return b}
+function row(y,h,items){const n=items.length,g=12,w=(CW-48-g*(n-1))/n;items.forEach((it,i)=>add(it[0],it[1],24+i*(w+g),y,w,h,it[2],it[3]))}
+function drawBtn(b){
+  const c=pctx,h=b.k===hovKey&&b.act;
+  if(b.act)rr(b.x,b.y,b.w,b.h,16,h?'#7b94ff':b.on?'rgba(74,108,247,.75)':'rgba(255,255,255,.13)');
+  if(b.prog>0)rr(b.x,b.y,Math.max(32,b.w*b.prog),b.h,16,'rgba(74,108,247,.9)');
+  if(b.k==='seek'&&h){c.fillStyle='#fff';c.fillRect(b.x+b.w*hovX-2,b.y-4,4,b.h+8)}
+  c.fillStyle='#fff';c.font='600 28px '+FONT;c.textBaseline='middle';
+  c.textAlign=b.left?'left':'center';c.fillText(b.t,b.left?b.x+20:b.x+b.w/2,b.y+b.h/2+1,b.w-34);
+}
+function draw(){
+  lastDraw=performance.now();
+  const c=pctx;c.clearRect(0,0,CW,CH);rr(0,0,CW,CH,28,'rgba(14,16,20,.92)');
+  btns=[];page==='main'?mainPage():filePage();
+  btns.forEach(drawBtn);
+  c.fillStyle='rgba(255,255,255,.55)';c.font='19px '+FONT;c.textAlign='center';
+  c.fillText('Look at a button · Space = select · Double-Space = recenter · ← → = skip 10 s · Space on empty = close',CW/2,494,CW-40);
+  ctex.needsUpdate=true;
+}
+function mainPage(){
+  const v=video,d=v.duration||0;
+  add('title',curName,24,14,820,58,null,false,true);
+  add('x','✕ Close',850,14,150,58,closeMenu);
+  add('seek',fmt(v.currentTime)+' / '+fmt(d),24,84,976,48,f=>{if(d)v.currentTime=f*d}).prog=d?v.currentTime/d:0;
+  row(146,72,[
+    ['pr','⏮ Prev',()=>step(-1)],['b','−10 s',()=>{v.currentTime-=10}],
+    ['pp',v.paused?'▶ Play':'⏸ Pause',()=>v.paused?v.play():v.pause()],
+    ['f','+10 s',()=>{v.currentTime+=10}],['nx','Next ⏭',()=>step(1)]]);
+  row(230,72,[
+    ['fov','Format: '+S.fov+'°',()=>{S.fov=S.fov===180?360:180;build()}],
+    ['lay',LAYN[S.layout],()=>{S.layout=LAY[(LAY.indexOf(S.layout)+1)%3];build()}],
+    ['sw','Swap eyes',()=>{S.swap=!S.swap;build()},S.swap],
+    ['gy','Head tracking',()=>setGyro(!S.gyro),S.gyro]]);
+  row(314,72,[
+    ['mu',v.muted?'Unmute':'Mute',()=>{v.muted=!v.muted},v.muted],
+    ['sp','Speed '+S.speed+'×',()=>{S.speed=SPEEDS[(SPEEDS.indexOf(S.speed)+1)%SPEEDS.length];v.defaultPlaybackRate=v.playbackRate=S.speed}],
+    ['lp','Loop',()=>{S.loop=!S.loop;v.loop=S.loop},S.loop],
+    ['hv','Headset view',()=>{S.split=!S.split;chips()},S.split]]);
+  row(398,72,[['rc','Recenter',()=>{recenter();needPlace=true}],['fs','Full screen',toggleFS],['fl','📁 Files',openFiles]]);
+}
+function filePage(){
+  const per=5,n=ex.items.length,pages=Math.max(1,Math.ceil(n/per));
+  const where=ex.src==='root'?'Browse':ex.src==='lib'?'📱 /'+ex.path:'🖥 '+decodeURIComponent(ex.path.replace(srvBase,'/'));
+  add('hd',where+'   ('+(ex.page+1)+'/'+pages+')',24,10,976,54,null,false,true);
+  ex.items.slice(ex.page*per,ex.page*per+per).forEach((it,i)=>add('e'+i,(it.d?'📁  ':'🎞  ')+it.k,24,72+i*62,976,56,it.go,false,true));
+  if(!n)add('none','Nothing here yet. Use ➕ Add',24,72,976,56,null,false,true);
+  row(396,76,[['up','⬆ Up',up],['pgu','▲ Prev',()=>{ex.page=Math.max(0,ex.page-1)}],['pgd','▼ Next',()=>{ex.page=Math.min(pages-1,ex.page+1)}],['ad','➕ Add',()=>$('#addf').click()],['bk','‹ Controls',()=>{page='main'}]]);
+}
+function openFiles(){page='files';ex.page=0;if(srvBase)ex.src='root';else{ex.src='lib';ex.path=''}loadEx()}
+function up(){
+  if(ex.src==='srv'){if(ex.path===srvBase)ex.src='root';else ex.path=new URL('../',ex.path).href}
+  else if(ex.src==='lib'&&ex.path)ex.path=ex.path.replace(/[^/]+\/$/,'');
+  else if(ex.src==='lib'&&srvBase)ex.src='root';
+  else{page='main';draw();return}
+  ex.page=0;loadEx();
+}
+async function loadEx(){
+  ex.items=[];
+  const go=(s,p)=>()=>{ex.src=s;ex.path=p;ex.page=0;loadEx()};
+  if(ex.src==='root'){ex.items=[{k:'On this phone ('+lib.length+')',d:1,go:go('lib','')},{k:'PC server',d:1,go:go('srv',srvBase)}]}
+  else if(ex.src==='lib'){
+    const dirs=new Set(),files=[];
+    lib.forEach((it,i)=>{if(!it.rel.startsWith(ex.path))return;const r=it.rel.slice(ex.path.length),j=r.indexOf('/');if(j>=0)dirs.add(r.slice(0,j));else files.push({k:it.name,i})});
+    ex.items=[...[...dirs].sort().map(n=>({k:n,d:1,go:go('lib',ex.path+n+'/')})),
+      ...files.sort((a,b)=>a.k.localeCompare(b.k,undefined,{numeric:true})).map(f=>({k:f.k,go:()=>{playLib(f.i)}}))];
+  }else{
+    try{
+      const t=await(await fetch(ex.path)).text(),doc=new DOMParser().parseFromString(t,'text/html'),seen=new Set();
+      [...doc.querySelectorAll('a')].forEach(a=>{
+        const u=new URL(a.getAttribute('href'),ex.path).href;
+        if(seen.has(u)||!u.startsWith(ex.path)||u===ex.path)return;seen.add(u);
+        const n=decodeURIComponent(u.slice(ex.path.length).replace(/\/$/,''));
+        if(u.endsWith('/'))ex.items.push({k:n,d:1,go:go('srv',u)});
+        else if(/\.(mp4|m4v|mov)$/i.test(u))ex.items.push({k:n,go:()=>{libIdx=-1;openVideo(u,n)}});
+      });
+    }catch(e){ex.items=[{k:'Couldn’t read the server',go:()=>{}}]}
+  }
+  if(menu)draw();
+}
+function playLib(i){const it=lib[i];if(!it)return;libIdx=i;if(objUrl)URL.revokeObjectURL(objUrl);objUrl=URL.createObjectURL(it.file);openVideo(objUrl,it.name)}
+function step(d){if(lib.length)playLib(((libIdx<0?0:libIdx)+d+lib.length)%lib.length)}
+function addFiles(files){
+  const vids=[...files].filter(f=>/^video\//.test(f.type)||/\.(mp4|m4v|mov)$/i.test(f.name));
+  if(!vids.length){toast('No playable videos found');return}
+  const first=lib.length;
+  vids.forEach(f=>lib.push({name:f.name,rel:f.webkitRelativePath||f.name,file:f}));
+  if(!started)playLib(first);else{toast(vids.length+' added');if(page==='files'&&menu)loadEx()}
+}
+function select(){
+  if(!menu){openMenu();return}
+  const b=btns.find(b=>b.k===hovKey&&b.act);
+  if(!b){closeMenu();beep(330);return}
+  beep(660);b.act(hovX);draw();
+}
+function onKey(e){
+  if(!started||(e.target.tagName==='INPUT'&&e.target.type==='text'))return;
+  const k=e.code;
+  if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();
+  if(k==='Space'||e.key===' '){
+    e.preventDefault();if(e.repeat||e.type==='keyup')return;
+    if(sp){clearTimeout(sp);sp=0;recenter();needPlace=true;beep(520,.05);setTimeout(()=>beep(520,.05),100)}
+    else sp=setTimeout(()=>{sp=0;select()},280);
+  }else if(e.type==='keydown'){
+    if(k==='Enter'){e.preventDefault();video.paused?video.play():video.pause()}
+    else if(k==='ArrowRight'){e.preventDefault();video.currentTime+=10}
+    else if(k==='ArrowLeft'){e.preventDefault();video.currentTime-=10}
+    else if(k==='Escape')closeMenu();
+  }
+}
+addEventListener('keydown',onKey);addEventListener('keyup',onKey);
+if(/CriOS|EdgiOS|FxiOS/.test(navigator.userAgent))$('#warn').hidden=false;
+$('#tt').onclick=async()=>{
+  const g=$('#gs');
+  if(window.top!==window.self){g.textContent='This page is shown inside another page, and iOS blocks motion and full screen there. It needs to be opened from its own web address.';return}
+  g.textContent='Asking for motion access…';
+  try{
+    if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission){
+      const r=await DeviceOrientationEvent.requestPermission();
+      if(r!=='granted'){g.textContent='Motion access was declined. Swipe Safari fully closed, reopen this link, tap the button again and choose Allow.';return}
+    }
+  }catch(e){g.textContent='The browser wouldn’t ask. Make sure you opened the link directly in Safari, not inside another app, then try again.';return}
+  let got=false;const h=e=>{if(e.alpha!=null||e.beta!=null)got=true};
+  addEventListener('deviceorientation',h);g.textContent='Waiting for sensors… gently tilt your phone.';
+  setTimeout(()=>{removeEventListener('deviceorientation',h);
+    g.textContent=got?'✓ Motion sensors work. Head tracking will switch on by itself.':'Allowed, but no motion data is arriving. Open the link directly in Safari and check for any restrictions on motion or privacy.';
+    if(got){try{localStorage.setItem('vrGyro','1')}catch(e){}}},2500);
+};
+$('#bFs').onclick=()=>{
+  const el=$('#player'),on=document.fullscreenElement||document.webkitFullscreenElement;
+  if(on){(document.exitFullscreen||document.webkitExitFullscreen).call(document)}
+  else if(document.fullscreenEnabled||document.webkitFullscreenEnabled){try{const p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el);if(p&&p.catch)p.catch(()=>{})}catch(e){}}
+  else toast('iPhone Safari doesn’t allow full screen for web pages. Tap Share, then Add to Home Screen, and open it from the icon.');
+  showBar();
+};
+
+function fsHelp(){toast(navigator.standalone?'Already full screen':'iPhone browsers can’t go full screen from a page. Tap Share, then Add to Home Screen, and open it from the icon.')}
+function toggleFS(){
+  const d=document,el=d.documentElement;
+  try{
+    if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen).call(d);
+    else if(el.requestFullscreen)el.requestFullscreen({navigationUI:'hide'}).catch(fsHelp);
+    else if(el.webkitRequestFullscreen)el.webkitRequestFullscreen();
+    else fsHelp();
+  }catch(e){fsHelp()}
+}
+$('#dg').onclick=async()=>{
+  const o=$('#dgo'),L=t=>{o.textContent+=t+'\n'};o.textContent='';
+  let fr=false;try{fr=window.top!==window}catch(e){fr=true}
+  L('Shown inside another page: '+(fr?'YES (iOS blocks motion and full screen here)':'no'));
+  L('Home-screen app mode: '+(navigator.standalone?'yes':'no'));
+  L('Full screen API: '+((document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen)?'available':'not available'));
+  L('Motion API: '+(window.DeviceOrientationEvent?'present':'missing'));
+  try{
+    if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission)L('Motion permission: '+await DeviceOrientationEvent.requestPermission());
+    else L('Motion permission: not required');
+  }catch(e){L('Motion permission error: '+e.name+' '+e.message);return}
+  let n=0,v='';const h=e=>{n++;v=[e.alpha,e.beta,e.gamma].map(x=>x==null?'null':x.toFixed(0)).join(', ')};
+  addEventListener('deviceorientation',h);await new Promise(r=>setTimeout(r,1500));removeEventListener('deviceorientation',h);
+  L(n?'Motion data: working ('+v+')':'Motion data: none received');
+};
+
+/* optional: when this page is served from a PC on your network */
+if(location.protocol==='http:'){
+  $('#lan').hidden=false;
+  const base=location.href.replace(/[^/]*$/,'');
+  fetch(base).then(r=>r.text()).then(t=>{
+    const d=new DOMParser().parseFromString(t,'text/html');
+    [...d.querySelectorAll('a')].map(a=>a.getAttribute('href')).filter(h=>h&&/\.(mp4|m4v|mov)$/i.test(h)).forEach(h=>{
+      const b=document.createElement('button');b.className='item';
+      const nm=decodeURIComponent(h.split('/').pop());b.textContent='▶  '+nm;
+      b.onclick=()=>openVideo(base+h,nm);$('#list').appendChild(b);
+    });
+  }).catch(()=>{});
+  $('#go').onclick=()=>{const u=$('#url').value.trim();if(u)openVideo(u,decodeURIComponent(u.split('/').pop().split('?')[0]))};
+}
+</script>
+</body>
+</html>
