@@ -42,6 +42,12 @@ small{color:var(--mut);display:block;margin-top:18px}
 #seek{flex:1;accent-color:#7b94ff}
 #pp{font-size:22px;background:none;border:0;color:#fff;width:36px}
 #toast{position:absolute;top:30%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;max-width:80%;text-align:center}
+#toast{z-index:9}
+#sheet{position:absolute;left:0;right:0;bottom:0;max-height:72%;overflow-y:auto;background:rgba(10,12,16,.96);padding:14px calc(14px + env(safe-area-inset-left,0px)) calc(14px + env(safe-area-inset-bottom,0px));font-size:14px;z-index:5;-webkit-overflow-scrolling:touch}
+#sheet h3{margin:14px 0 4px;font-size:12px;color:#9aa1ab;letter-spacing:.06em;text-transform:uppercase}
+#sheet .chips{flex-wrap:wrap;overflow:visible}
+#sheet .sl{display:flex;align-items:center;gap:10px;margin:8px 0}#sheet .sl span{width:150px}#sheet .sl input{flex:1;accent-color:#7b94ff}
+#sheet .it{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid rgba(255,255,255,.12);padding:12px 4px;color:#fff;font-size:15px}
 </style>
 </head>
 <body>
@@ -49,13 +55,13 @@ small{color:var(--mut);display:block;margin-top:18px}
   <div style="font-size:48px">🥽</div>
   <h1>VR Video Player</h1>
   <p class="s">180° and 360° · side-by-side, top-bottom or flat</p>
-  <label class="big">Choose videos
-    <input id="file" type="file" accept="video/*,.mp4,.m4v,.mov" multiple hidden>
+  <label class="big">Choose videos or photos
+    <input id="file" type="file" accept="video/*,image/*,.mp4,.m4v,.mov,.heic" multiple hidden>
   </label>
   <label class="big" style="margin-top:12px;font-size:16px;padding:14px;background:var(--card);color:var(--fg)">…or choose a whole folder
     <input id="folder" type="file" webkitdirectory hidden>
   </label>
-  <input id="addf" type="file" accept="video/*,.mp4,.m4v,.mov" multiple hidden>
+  <input id="addf" type="file" accept="video/*,image/*,.mp4,.m4v,.mov,.heic" multiple hidden>
   <button class="btn" id="tt" style="margin-top:16px;width:100%;padding:14px;font-size:16px">Test head tracking</button>
   <div id="gs" style="font-size:14px;margin-top:8px;color:var(--mut)"></div>
   <div class="card"><h2>KEYBOARD (WORKS WITHOUT LOOKING)</h2>
@@ -76,6 +82,8 @@ small{color:var(--mut);display:block;margin-top:18px}
   <div class="bar" id="bot">
     <div class="seek"><button id="pp">▶</button><span id="cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="dur">0:00</span></div>
     <div class="chips">
+      <button class="chip" id="bPr">⏮</button>
+      <button class="chip" id="bNx">⏭</button>
       <button class="chip" id="bFov"></button>
       <button class="chip" id="bLay"></button>
       <button class="chip" id="bSplit"></button>
@@ -83,16 +91,17 @@ small{color:var(--mut);display:block;margin-top:18px}
       <button class="chip" id="bSwap">Swap eyes</button>
       <button class="chip" id="bRec">Recenter</button>
       <button class="chip" id="bFs">Full screen</button>
-      <button class="chip" id="bFs">Full screen</button>
+      <button class="chip" id="bMore">⚙ More</button>
     </div>
   </div>
+  <div id="sheet" hidden></div>
   <div id="toast" hidden></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=s=>document.querySelector(s), R=Math.PI/180;
-const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1};
+const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1,kind:'video',cam:90,conv:0,bri:1,q:1.5,slide:0};
 const LAY=['sbs','tb','mono'], LAYN={sbs:'3D side-by-side',tb:'3D top-bottom',mono:'2D flat'};
 const video=document.createElement('video');
 video.playsInline=true;video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');
@@ -105,7 +114,7 @@ function fmt(s){s=Math.max(0,s|0);return(s/60|0)+':'+String(s%60).padStart(2,'0'
 
 function init(){
   renderer=new THREE.WebGLRenderer({canvas:$('#cv')});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setPixelRatio(S.q);
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(90,1,.1,1100);
   scene.add(camera);initVR();
@@ -114,23 +123,35 @@ function init(){
 }
 function resize(){if(renderer)renderer.setSize(innerWidth,innerHeight,false)}
 
+let tex=null,texKey='',img=null,imgT=0;
+function getTex(){
+  const key=S.kind==='img'?img.src:'video';
+  if(tex&&key===texKey)return tex;
+  if(tex)tex.dispose();
+  if(S.kind==='img'){
+    let src=img;const mx=renderer.capabilities.maxTextureSize,w=img.naturalWidth,h=img.naturalHeight;
+    if(Math.max(w,h)>mx){const k=mx/Math.max(w,h),c=document.createElement('canvas');c.width=Math.floor(w*k);c.height=Math.floor(h*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);src=c}
+    tex=new THREE.Texture(src);tex.needsUpdate=true;
+  }else tex=new THREE.VideoTexture(video);
+  tex.minFilter=tex.magFilter=THREE.LinearFilter;tex.generateMipmaps=false;texKey=key;return tex;
+}
+function applyView(){meshes.forEach((m,e)=>{m.rotation.y=(e?-1:1)*S.conv*R;m.material.color.setScalar(S.bri)})}
 function build(){
-  meshes.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.map.dispose();m.material.dispose()});
+  meshes.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.dispose()});
   meshes=[];
-  const half=S.fov===180;
+  const t=getTex(),half=S.fov===180;
   for(let e=0;e<2;e++){
     const g=half?new THREE.SphereGeometry(500,64,48,Math.PI,Math.PI):new THREE.SphereGeometry(500,64,48);
     g.scale(-1,1,1);
     if(!half)g.rotateY(-Math.PI/2);
-    const t=new THREE.VideoTexture(video);
-    t.minFilter=t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;
-    const eye=S.swap?1-e:e;
-    if(S.layout==='sbs'){t.repeat.set(.5,1);t.offset.set(eye*.5,0)}
-    else if(S.layout==='tb'){t.repeat.set(1,.5);t.offset.set(0,eye?0:.5)}
+    const eye=S.swap?1-e:e,uv=g.attributes.uv;
+    for(let i=0;i<uv.count;i++){let u=uv.getX(i),v=uv.getY(i);
+      if(S.layout==='sbs')u=u*.5+eye*.5;else if(S.layout==='tb')v=v*.5+(eye?0:.5);
+      uv.setXY(i,u,v)}
     const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:t}));
     m.layers.set(e+1);scene.add(m);meshes.push(m);
   }
-  chips();
+  applyView();chips();
 }
 
 function frame(){
@@ -138,11 +159,12 @@ function frame(){
   if(!started)return;
   if(S.gyro){yawQ.setFromAxisAngle(Y,S.yaw);camera.quaternion.copy(yawQ).multiply(dev)}
   else{eul.set(S.lat,S.lon,0,'YXZ');camera.quaternion.setFromEuler(eul)}
+  if(S.kind==='img'&&S.slide&&lib.length>1&&performance.now()-imgT>S.slide*1000){imgT=performance.now();step(1)}
   vrUpdate();
   const w=innerWidth,h=innerHeight;
   renderer.setScissorTest(true);
   const passes=S.split?2:1;
-  camera.fov=S.split?90:70;
+  camera.fov=S.split?S.cam:S.cam*.78;
   for(let e=0;e<passes;e++){
     const vw=w/passes;
     camera.aspect=vw/h;camera.updateProjectionMatrix();
@@ -213,7 +235,7 @@ $('#seek').addEventListener('change',()=>seeking=false);
 $('#back').onclick=()=>{
   video.pause();started=false;video.removeAttribute('src');video.load();
   if(objUrl){URL.revokeObjectURL(objUrl);objUrl=null}
-  $('#player').hidden=true;$('#home').hidden=false;$('#file').value='';
+  $('#player').hidden=true;$('#home').hidden=false;$('#file').value='';$('#sheet').hidden=true;closeMenu();
 };
 let drag=null;
 const cv=$('#cv');
@@ -237,20 +259,71 @@ function guess(name){
   S.swap=false;
 }
 function openVideo(src,name){
-  guess(name);
+  const im=/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i.test(name);
+  guess(name);S.kind=im?'img':'video';
   if(!renderer)init();
-  closeMenu();
-  video.onerror=()=>toast('This phone can’t play that file. Try MP4 or MOV (H.264 or HEVC).');
-  video.src=src;video.loop=S.loop;video.defaultPlaybackRate=video.playbackRate=S.speed;video.load();
+  closeMenu();$('#sheet').hidden=true;$('.seek').hidden=im;
   $('#title').textContent=name;curName=name;
   $('#home').hidden=true;$('#player').hidden=false;
-  S.lon=S.lat=0;build();started=true;resize();
+  S.lon=S.lat=0;started=true;resize();
+  if(im){
+    video.pause();video.removeAttribute('src');video.load();
+    const i=new Image();i.onerror=()=>toast('Couldn’t open this photo.');
+    i.onload=()=>{img=i;imgT=performance.now();build()};i.src=src;
+  }else{
+    video.onerror=()=>toast('This phone can’t play that file. Try MP4 or MOV (H.264 or HEVC).');
+    video.src=src;video.loop=S.loop;video.defaultPlaybackRate=video.playbackRate=S.speed;video.load();build();
+    video.play().then(showBar).catch(()=>{$('#top').classList.remove('hide');$('#bot').classList.remove('hide');toast('Tap ▶ to start')});
+  }
   try{if(localStorage.getItem('vrGyro')==='1')setGyro(true,true)}catch(e){}
-  video.play().then(showBar).catch(()=>{$('#top').classList.remove('hide');$('#bot').classList.remove('hide');toast('Tap ▶ to start')});
   if(S.split&&innerHeight>innerWidth)toast('Turn your phone to landscape');
   showBar();
 }
 ['#file','#folder','#addf'].forEach(s=>$(s).addEventListener('change',e=>{addFiles(e.target.files);e.target.value=''}));
+
+/* ---------- shared controls (VR menu and on-screen sheet) ---------- */
+const QS=[.75,1,1.5,2],SLS=[0,5,10,30];
+const ICON=n=>/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i.test(n)?'🖼':'🎞';
+const SLD=[['cam','Field of view',50,120,v=>Math.round(v)+'°'],['conv','Eye convergence',-3,3,v=>v.toFixed(1)+'°'],['bri','Brightness',.5,1.5,v=>Math.round(v*100)+'%']];
+function applyQ(){if(renderer){renderer.setPixelRatio(S.q);resize()}}
+function OPT(){const v=video;return{
+  pr:['⏮ Prev',()=>step(-1)],nx:['Next ⏭',()=>step(1)],
+  b:['−10 s',()=>{v.currentTime-=10}],f:['+10 s',()=>{v.currentTime+=10}],
+  pp:[v.paused?'▶ Play':'⏸ Pause',()=>v.paused?v.play():v.pause()],
+  fov:['Format: '+S.fov+'°',()=>{S.fov=S.fov===180?360:180;build()}],
+  lay:[LAYN[S.layout],()=>{S.layout=LAY[(LAY.indexOf(S.layout)+1)%3];build()}],
+  sw:['Swap eyes',()=>{S.swap=!S.swap;build()},S.swap],
+  gy:['Head tracking',()=>setGyro(!S.gyro),S.gyro],
+  mu:[v.muted?'Unmute':'Mute',()=>{v.muted=!v.muted},v.muted],
+  sp:['Speed '+S.speed+'×',()=>{S.speed=SPEEDS[(SPEEDS.indexOf(S.speed)+1)%SPEEDS.length];v.defaultPlaybackRate=v.playbackRate=S.speed}],
+  lp:['Loop',()=>{S.loop=!S.loop;v.loop=S.loop},S.loop],
+  hv:['Headset view',()=>{S.split=!S.split;chips()},S.split],
+  rc:['Recenter',()=>{recenter();needPlace=true}],
+  ql:['Quality '+S.q+'×',()=>{S.q=QS[(QS.indexOf(S.q)+1)%QS.length];applyQ()}],
+  ss:['Slideshow: '+(S.slide?S.slide+' s':'off'),()=>{S.slide=SLS[(SLS.indexOf(S.slide)+1)%SLS.length];imgT=performance.now()},!!S.slide],
+  fl:['📁 Files',openFiles],ds:['⚙ Display',()=>{page='disp'}]
+}}
+function initEx(){ex.page=0;if(srvBase)ex.src='root';else{ex.src='lib';ex.path=''}loadEx()}
+function renderSheet(){
+  const sh=$('#sheet'),top=sh.scrollTop,o=OPT(),im=S.kind==='img';sh.innerHTML='';
+  const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+  const x=el('button','chip','✕ Close');x.onclick=()=>{sh.hidden=true};sh.appendChild(x);
+  const grp=(t,keys)=>{sh.appendChild(el('h3','',t));const r=el('div','chips');keys.forEach(k=>{const[a,f,on]=o[k],b=el('button','chip'+(on?' on':''),a);b.onclick=()=>{f();renderSheet();showBar()};r.appendChild(b)});sh.appendChild(r)};
+  grp('Playback',im?['pr','nx','ss']:['pr','b','pp','f','nx']);
+  grp('Format',['fov','lay','sw','gy']);
+  grp('Options',im?['hv','ql','rc']:['mu','sp','lp','hv','ql','rc']);
+  sh.appendChild(el('h3','','Display'));
+  SLD.forEach(([k,t,mn,mx,fm])=>{const d=el('div','sl'),s=el('span','',t+': '+fm(S[k])),i=el('input');
+    i.type='range';i.min=mn;i.max=mx;i.step=(mx-mn)/200;i.value=S[k];
+    i.oninput=()=>{S[k]=+i.value;s.textContent=t+': '+fm(S[k]);applyView()};d.append(s,i);sh.appendChild(d)});
+  sh.appendChild(el('h3','','Files'));
+  const r=el('div','chips');[['⬆ Up',up],['➕ Add',()=>$('#addf').click()]].forEach(([a,f])=>{const b=el('button','chip',a);b.onclick=f;r.appendChild(b)});sh.appendChild(r);
+  ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)});
+  sh.scrollTop=top;
+}
+$('#bPr').onclick=()=>{step(-1);showBar()};
+$('#bNx').onclick=()=>{step(1);showBar()};
+$('#bMore').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden)initEx()};
 
 /* ---------- VR menu: head pointer + keyboard ---------- */
 const CW=1024,CH=512,PW=4,PH=2,PD=2.6;
@@ -291,7 +364,7 @@ function vrUpdate(){
     }
   }
   const k=nh?nh.k:null,now=performance.now();
-  if(k!==hovKey||now-lastDraw>500||(nh&&nh.k==='seek')){hovKey=k;draw()}
+  if(k!==hovKey||now-lastDraw>500||(nh&&nh.prog!=null)){hovKey=k;draw()}
 }
 function rr(x,y,w,h,r,f){const c=pctx;r=Math.min(r,w/2,h/2);c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();c.fillStyle=f;c.fill()}
 function add(k,t,x,y,w,h,act,on,left){const b={k,t,x,y,w,h,act,on,left};btns.push(b);return b}
@@ -300,49 +373,47 @@ function drawBtn(b){
   const c=pctx,h=b.k===hovKey&&b.act;
   if(b.act)rr(b.x,b.y,b.w,b.h,16,h?'#7b94ff':b.on?'rgba(74,108,247,.75)':'rgba(255,255,255,.13)');
   if(b.prog>0)rr(b.x,b.y,Math.max(32,b.w*b.prog),b.h,16,'rgba(74,108,247,.9)');
-  if(b.k==='seek'&&h){c.fillStyle='#fff';c.fillRect(b.x+b.w*hovX-2,b.y-4,4,b.h+8)}
+  if(b.prog!=null&&h){c.fillStyle='#fff';c.fillRect(b.x+b.w*hovX-2,b.y-4,4,b.h+8)}
   c.fillStyle='#fff';c.font='600 28px '+FONT;c.textBaseline='middle';
   c.textAlign=b.left?'left':'center';c.fillText(b.t,b.left?b.x+20:b.x+b.w/2,b.y+b.h/2+1,b.w-34);
 }
 function draw(){
   lastDraw=performance.now();
   const c=pctx;c.clearRect(0,0,CW,CH);rr(0,0,CW,CH,28,'rgba(14,16,20,.92)');
-  btns=[];page==='main'?mainPage():filePage();
+  btns=[];page==='main'?mainPage():page==='disp'?dispPage():filePage();
   btns.forEach(drawBtn);
   c.fillStyle='rgba(255,255,255,.55)';c.font='19px '+FONT;c.textAlign='center';
   c.fillText('Look at a button · Space = select · Double-Space = recenter · ← → = skip 10 s · Space on empty = close',CW/2,494,CW-40);
   ctex.needsUpdate=true;
 }
 function mainPage(){
-  const v=video,d=v.duration||0;
+  const v=video,d=v.duration||0,o=OPT(),im=S.kind==='img',RW=(y,keys)=>row(y,72,keys.map(k=>[k,...o[k]]));
   add('title',curName,24,14,820,58,null,false,true);
   add('x','✕ Close',850,14,150,58,closeMenu);
-  add('seek',fmt(v.currentTime)+' / '+fmt(d),24,84,976,48,f=>{if(d)v.currentTime=f*d}).prog=d?v.currentTime/d:0;
-  row(146,72,[
-    ['pr','⏮ Prev',()=>step(-1)],['b','−10 s',()=>{v.currentTime-=10}],
-    ['pp',v.paused?'▶ Play':'⏸ Pause',()=>v.paused?v.play():v.pause()],
-    ['f','+10 s',()=>{v.currentTime+=10}],['nx','Next ⏭',()=>step(1)]]);
-  row(230,72,[
-    ['fov','Format: '+S.fov+'°',()=>{S.fov=S.fov===180?360:180;build()}],
-    ['lay',LAYN[S.layout],()=>{S.layout=LAY[(LAY.indexOf(S.layout)+1)%3];build()}],
-    ['sw','Swap eyes',()=>{S.swap=!S.swap;build()},S.swap],
-    ['gy','Head tracking',()=>setGyro(!S.gyro),S.gyro]]);
-  row(314,72,[
-    ['mu',v.muted?'Unmute':'Mute',()=>{v.muted=!v.muted},v.muted],
-    ['sp','Speed '+S.speed+'×',()=>{S.speed=SPEEDS[(SPEEDS.indexOf(S.speed)+1)%SPEEDS.length];v.defaultPlaybackRate=v.playbackRate=S.speed}],
-    ['lp','Loop',()=>{S.loop=!S.loop;v.loop=S.loop},S.loop],
-    ['hv','Headset view',()=>{S.split=!S.split;chips()},S.split]]);
-  row(398,72,[['rc','Recenter',()=>{recenter();needPlace=true}],['fs','Full screen',toggleFS],['fl','📁 Files',openFiles]]);
+  if(im)add('info',(libIdx>=0?(libIdx+1)+' of '+lib.length+' · ':'')+'Photo',24,84,976,48,null,false,true);
+  else add('seek',fmt(v.currentTime)+' / '+fmt(d),24,84,976,48,f=>{if(d)v.currentTime=f*d}).prog=d?v.currentTime/d:0;
+  RW(146,im?['pr','ss','nx']:['pr','b','pp','f','nx']);
+  RW(230,['fov','lay','sw','gy']);
+  RW(314,im?['hv','ql']:['mu','sp','lp','hv']);
+  RW(398,['rc','fl','ds']);
+}
+function dispPage(){
+  const o=OPT();
+  add('title','Display settings',24,14,820,58,null,false,true);
+  add('x','✕ Close',850,14,150,58,closeMenu);
+  SLD.forEach(([k,t,mn,mx,fm],i)=>{add('s_'+k,t+': '+fm(S[k]),24,84+i*66,976,56,f=>{S[k]=mn+(mx-mn)*f;applyView()}).prog=(S[k]-mn)/(mx-mn)});
+  row(290,72,[['ql',...o.ql]]);
+  row(390,76,[['bk','‹ Controls',()=>{page='main'}]]);
 }
 function filePage(){
   const per=5,n=ex.items.length,pages=Math.max(1,Math.ceil(n/per));
   const where=ex.src==='root'?'Browse':ex.src==='lib'?'📱 /'+ex.path:'🖥 '+decodeURIComponent(ex.path.replace(srvBase,'/'));
   add('hd',where+'   ('+(ex.page+1)+'/'+pages+')',24,10,976,54,null,false,true);
-  ex.items.slice(ex.page*per,ex.page*per+per).forEach((it,i)=>add('e'+i,(it.d?'📁  ':'🎞  ')+it.k,24,72+i*62,976,56,it.go,false,true));
+  ex.items.slice(ex.page*per,ex.page*per+per).forEach((it,i)=>add('e'+i,(it.d?'📁  ':ICON(it.k)+'  ')+it.k,24,72+i*62,976,56,it.go,false,true));
   if(!n)add('none','Nothing here yet. Use ➕ Add',24,72,976,56,null,false,true);
   row(396,76,[['up','⬆ Up',up],['pgu','▲ Prev',()=>{ex.page=Math.max(0,ex.page-1)}],['pgd','▼ Next',()=>{ex.page=Math.min(pages-1,ex.page+1)}],['ad','➕ Add',()=>$('#addf').click()],['bk','‹ Controls',()=>{page='main'}]]);
 }
-function openFiles(){page='files';ex.page=0;if(srvBase)ex.src='root';else{ex.src='lib';ex.path=''}loadEx()}
+function openFiles(){page='files';initEx()}
 function up(){
   if(ex.src==='srv'){if(ex.path===srvBase)ex.src='root';else ex.path=new URL('../',ex.path).href}
   else if(ex.src==='lib'&&ex.path)ex.path=ex.path.replace(/[^/]+\/$/,'');
@@ -367,17 +438,17 @@ async function loadEx(){
         if(seen.has(u)||!u.startsWith(ex.path)||u===ex.path)return;seen.add(u);
         const n=decodeURIComponent(u.slice(ex.path.length).replace(/\/$/,''));
         if(u.endsWith('/'))ex.items.push({k:n,d:1,go:go('srv',u)});
-        else if(/\.(mp4|m4v|mov)$/i.test(u))ex.items.push({k:n,go:()=>{libIdx=-1;openVideo(u,n)}});
+        else if(/\.(mp4|m4v|mov|jpe?g|png|webp|heic|avif)$/i.test(u))ex.items.push({k:n,go:()=>{libIdx=-1;openVideo(u,n)}});
       });
     }catch(e){ex.items=[{k:'Couldn’t read the server',go:()=>{}}]}
   }
-  if(menu)draw();
+  if(menu)draw();if(!$('#sheet').hidden)renderSheet();
 }
 function playLib(i){const it=lib[i];if(!it)return;libIdx=i;if(objUrl)URL.revokeObjectURL(objUrl);objUrl=URL.createObjectURL(it.file);openVideo(objUrl,it.name)}
 function step(d){if(lib.length)playLib(((libIdx<0?0:libIdx)+d+lib.length)%lib.length)}
 function addFiles(files){
-  const vids=[...files].filter(f=>/^video\//.test(f.type)||/\.(mp4|m4v|mov)$/i.test(f.name));
-  if(!vids.length){toast('No playable videos found');return}
+  const vids=[...files].filter(f=>/^(video|image)\//.test(f.type)||/\.(mp4|m4v|mov|jpe?g|png|webp|heic|heif|avif)$/i.test(f.name));
+  if(!vids.length){toast('No videos or photos found');return}
   const first=lib.length;
   vids.forEach(f=>lib.push({name:f.name,rel:f.webkitRelativePath||f.name,file:f}));
   if(!started)playLib(first);else{toast(vids.length+' added');if(page==='files'&&menu)loadEx()}
@@ -398,8 +469,8 @@ function onKey(e){
     else sp=setTimeout(()=>{sp=0;select()},280);
   }else if(e.type==='keydown'){
     if(k==='Enter'){e.preventDefault();video.paused?video.play():video.pause()}
-    else if(k==='ArrowRight'){e.preventDefault();video.currentTime+=10}
-    else if(k==='ArrowLeft'){e.preventDefault();video.currentTime-=10}
+    else if(k==='ArrowRight'){e.preventDefault();if(S.kind==='img')step(1);else video.currentTime+=10}
+    else if(k==='ArrowLeft'){e.preventDefault();if(S.kind==='img')step(-1);else video.currentTime-=10}
     else if(k==='Escape')closeMenu();
   }
 }
@@ -420,13 +491,6 @@ $('#tt').onclick=async()=>{
   setTimeout(()=>{removeEventListener('deviceorientation',h);
     g.textContent=got?'✓ Motion sensors work. Head tracking will switch on by itself.':'Allowed, but no motion data is arriving. Open the link directly in Safari and check for any restrictions on motion or privacy.';
     if(got){try{localStorage.setItem('vrGyro','1')}catch(e){}}},2500);
-};
-$('#bFs').onclick=()=>{
-  const el=$('#player'),on=document.fullscreenElement||document.webkitFullscreenElement;
-  if(on){(document.exitFullscreen||document.webkitExitFullscreen).call(document)}
-  else if(document.fullscreenEnabled||document.webkitFullscreenEnabled){try{const p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el);if(p&&p.catch)p.catch(()=>{})}catch(e){}}
-  else toast('iPhone Safari doesn’t allow full screen for web pages. Tap Share, then Add to Home Screen, and open it from the icon.');
-  showBar();
 };
 
 function fsHelp(){toast(navigator.standalone?'Already full screen':'iPhone browsers can’t go full screen from a page. Tap Share, then Add to Home Screen, and open it from the icon.')}
