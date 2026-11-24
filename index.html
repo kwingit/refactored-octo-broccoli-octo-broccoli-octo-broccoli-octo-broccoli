@@ -48,6 +48,7 @@ small{color:var(--mut);display:block;margin-top:18px}
 #sheet .chips{flex-wrap:wrap;overflow:visible}
 #sheet .sl{display:flex;align-items:center;gap:10px;margin:8px 0}#sheet .sl span{width:150px}#sheet .sl input{flex:1;accent-color:#7b94ff}
 #sheet .it{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid rgba(255,255,255,.12);padding:12px 4px;color:#fff;font-size:15px}
+#title{white-space:normal;font-size:12px;line-height:1.3}
 </style>
 </head>
 <body>
@@ -89,6 +90,7 @@ small{color:var(--mut);display:block;margin-top:18px}
       <button class="chip" id="bSplit"></button>
       <button class="chip" id="bGyro">Head tracking</button>
       <button class="chip" id="bSwap">Swap eyes</button>
+      <button class="chip" id="bFx">Flat screen</button>
       <button class="chip" id="bRec">Recenter</button>
       <button class="chip" id="bFs">Full screen</button>
       <button class="chip" id="bMore">⚙ More</button>
@@ -101,7 +103,7 @@ small{color:var(--mut);display:block;margin-top:18px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=s=>document.querySelector(s), R=Math.PI/180;
-const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1,kind:'video',cam:90,conv:0,bri:1,q:1.5,slide:0,pit:0,scr:1,flat:false,vs:0};
+const S={fov:180,layout:'sbs',split:true,gyro:false,swap:false,lon:0,lat:0,yaw:0,loop:true,speed:1,kind:'video',cam:90,conv:0,bri:1,q:1,slide:0,pit:0,scr:1,flat:false,vs:0};
 const LAY=['sbs','tb','mono'], LAYN={sbs:'3D side-by-side',tb:'3D top-bottom',mono:'2D flat'};
 const video=document.createElement('video');
 video.playsInline=true;video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');
@@ -128,7 +130,8 @@ function resize(){if(renderer)renderer.setSize(innerWidth,innerHeight,false)}
 let tex=null,texKey='',img=null,imgT=0,newFrame=false,lastT=-1,uiT=0,roots=[],vc=null,vctx=null,vsc=1,upd=false,ems=0,bad=0,autoI=0;
 const FD=6,VS=[1,.75,.5,.25],DL=[0,1,.75,.5,.25];
 const rv='requestVideoFrameCallback' in HTMLVideoElement.prototype;
-if(rv){const vf=()=>{newFrame=true;video.requestVideoFrameCallback(vf)};video.requestVideoFrameCallback(vf)}
+let lastRv=0,vfN=0,vfps=0,rfN=0,rfps=0,fpsT=0;
+if(rv){const vf=()=>{newFrame=true;lastRv=performance.now();vfN++;video.requestVideoFrameCallback(vf)};video.requestVideoFrameCallback(vf)}
 video.addEventListener('loadeddata',()=>{newFrame=true});
 video.addEventListener('loadedmetadata',()=>{if(S.kind==='video'&&renderer&&started){autoI=0;build()}});
 function getTex(){
@@ -148,6 +151,11 @@ function getTex(){
     else tex=new THREE.Texture(video);
     newFrame=true}
   tex.flipY=false;tex.minFilter=tex.magFilter=THREE.LinearFilter;tex.generateMipmaps=false;texKey=key;return tex;
+}
+function statsText(){
+  if(S.kind==='img')return 'Photo';
+  const q=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
+  return video.videoWidth+'×'+video.videoHeight+' · screen '+rfps.toFixed(0)+' · video '+vfps.toFixed(0)+' fps · '+ems.toFixed(0)+' ms'+(q?' · '+q.droppedVideoFrames+' dropped':'')+' · detail '+Math.round(vsc*100)+'%';
 }
 function mediaAspect(){
   let w,h;if(S.kind==='img'&&img){w=img.naturalWidth;h=img.naturalHeight}else{w=video.videoWidth||16;h=video.videoHeight||9}
@@ -188,7 +196,7 @@ function frame(){
   const t0=performance.now();
   if(S.kind==='video'&&tex&&video.readyState>=2){
     let nf=false;
-    if(rv){if(newFrame){newFrame=false;nf=true}}
+    if(rv&&(video.paused||performance.now()-lastRv<400)){if(newFrame){newFrame=false;nf=true}}
     else if(video.currentTime!==lastT){lastT=video.currentTime;nf=true}
     if(nf){if(vc)vctx.drawImage(video,0,0,vc.width,vc.height);tex.needsUpdate=true;upd=true}
   }
@@ -205,8 +213,10 @@ function frame(){
     renderer.clear();renderer.render(scene,camera);
   }
   const nw=performance.now();
+  rfN++;if(nw-fpsT>=1000){rfps=rfN*1000/(nw-fpsT);vfps=vfN*1000/(nw-fpsT);rfN=vfN=0;fpsT=nw}
   if(upd){upd=false;ems=ems*.9+(nw-t0)*.1}
   if(nw-uiT>250){uiT=nw;
+    if(!$('#top').classList.contains('hide'))$('#title').textContent=curName+'  ·  '+statsText();
     if(!S.vs&&S.kind==='video'&&!video.paused&&autoI<VS.length-1&&ems>12){if(++bad>=8){bad=0;autoI++;build()}}else bad=0;
     if(!seeking&&video.duration){$('#seek').value=video.currentTime/video.duration*1000}
     $('#cur').textContent=fmt(video.currentTime);$('#dur').textContent=fmt(video.duration||0);
@@ -252,7 +262,7 @@ function chips(){
   $('#bSplit').textContent=S.split?'Headset view':'Single view';
   $('#bSplit').classList.toggle('on',S.split);
   $('#bGyro').classList.toggle('on',S.gyro);
-  $('#bSwap').classList.toggle('on',S.swap);
+  $('#bSwap').classList.toggle('on',S.swap);$('#bFx').classList.toggle('on',S.flat);
 }
 function showBar(){
   $('#top').classList.remove('hide');$('#bot').classList.remove('hide');
@@ -320,7 +330,7 @@ function openVideo(src,name){
 ['#file','#folder','#addf'].forEach(s=>$(s).addEventListener('change',e=>{addFiles(e.target.files);e.target.value=''}));
 
 /* ---------- shared controls (VR menu and on-screen sheet) ---------- */
-const QS=[.75,1,1.5,2],SLS=[0,5,10,30];
+const QS=[1,.75,.5,.35],SLS=[0,5,10,30];
 const ICON=n=>/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i.test(n)?'🖼':'🎞';
 const SLD=[['cam','Field of view',50,120,v=>Math.round(v)+'°'],['conv','Eye convergence',-3,3,v=>v.toFixed(1)+'°'],['bri','Brightness',.5,1.5,v=>Math.round(v*100)+'%'],['scr','Screen size',.5,2,v=>Math.round(v*100)+'%']];
 function applyQ(){if(renderer){renderer.setPixelRatio(S.q);resize()}}
@@ -364,6 +374,8 @@ function renderSheet(){
   ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)});
   sh.scrollTop=top;
 }
+$('#bFx').onclick=()=>{S.flat=!S.flat;build();showBar()};
+{const s=document.createElement('small');s.textContent='Version 9';$('#home').appendChild(s)}
 $('#bPr').onclick=()=>{step(-1);showBar()};
 $('#bNx').onclick=()=>{step(1);showBar()};
 $('#bMore').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden)initEx()};
@@ -442,7 +454,7 @@ function mainPage(){
 }
 function dispPage(){
   const o=OPT();
-  add('title','Display settings',24,14,820,58,null,false,true);
+  add('title',statsText(),24,14,820,58,null,false,true);
   add('x','✕ Close',850,14,150,58,closeMenu);
   SLD.forEach(([k,t,mn,mx,fm],i)=>{add('s_'+k,t+': '+fm(S[k]),24,82+i*58,976,52,f=>{S[k]=mn+(mx-mn)*f;applyView()}).prog=(S[k]-mn)/(mx-mn)});
   row(318,60,[['ql',...o.ql],['vd',...o.vd]]);
