@@ -1,3 +1,4 @@
+<!-- VR Video Player - version 11 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -389,7 +390,16 @@ function renderSheet(){
   ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)});
   sh.scrollTop=top;
 }
-{const s=document.createElement('small');s.textContent='Version 10';$('#home').appendChild(s)}
+/* VR Video Player version 11 */
+const VERSION=11;
+{const s=document.createElement('small');s.textContent='Version '+VERSION;$('#home').appendChild(s)}
+if(/^https?:$/.test(location.protocol)){
+  fetch(location.pathname,{cache:'no-store'}).then(r=>r.text()).then(t=>{
+    const m=t.match(/VR Video Player - version (\d+)/);
+    if(m&&+m[1]>VERSION){const b=document.createElement('button');b.className='btn';b.style.cssText='width:100%;margin-top:12px;padding:12px';
+      b.textContent='Version '+m[1]+' is available. Tap to update';b.onclick=()=>location.replace(location.pathname+'?v='+m[1]);$('#home').insertBefore(b,$('#home').firstChild)}
+  }).catch(()=>{});
+}
 $('#bPr').onclick=()=>{step(-1);showBar()};
 $('#bNx').onclick=()=>{step(1);showBar()};
 $('#bMore').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden){showBar();initEx()}};
