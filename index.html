@@ -49,6 +49,21 @@ small{color:var(--mut);display:block;margin-top:18px}
 #sheet .sl{display:flex;align-items:center;gap:10px;margin:8px 0}#sheet .sl span{width:150px}#sheet .sl input{flex:1;accent-color:#7b94ff}
 #sheet .it{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid rgba(255,255,255,.12);padding:12px 4px;color:#fff;font-size:15px}
 #title{white-space:normal;font-size:12px;line-height:1.3}
+#sheet{background:#13151b}
+#mainchips{justify-content:center}
+#title{white-space:nowrap;font-size:14px;line-height:normal}
+#sheet{border-radius:18px 18px 0 0;animation:up .25s ease;box-shadow:0 -8px 30px rgba(0,0,0,.5)}
+@keyframes up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+#sheet .grab{width:44px;height:5px;border-radius:3px;background:rgba(255,255,255,.35);margin:2px auto 8px}
+#sheet .row{display:flex;align-items:center;gap:10px;margin:9px 0}
+#sheet .row>label{width:92px;flex:none;color:#aeb4bd;font-size:13px}
+#sheet .row>input{flex:1;min-width:0;accent-color:#7b94ff}
+#sheet .val{width:46px;text-align:right;font-size:13px}
+.seg{display:flex;flex:1;min-width:0;background:rgba(255,255,255,.12);border-radius:10px;padding:2px;gap:2px}
+.seg button{flex:1;min-width:0;border:0;background:none;color:#fff;border-radius:8px;padding:9px 2px;font-size:13px;white-space:nowrap}
+.seg button.on{background:var(--acc)}
+#sheet .pill{flex:1;background:rgba(255,255,255,.14);border:0;border-radius:10px;padding:10px 4px;font-size:13px;color:#fff}
+#sheet .info{font-size:12px;line-height:1.5;color:#c9ced6}
 </style>
 </head>
 <body>
@@ -82,18 +97,10 @@ small{color:var(--mut);display:block;margin-top:18px}
   <div class="bar" id="top"><button class="chip" id="back">‹ Back</button><div id="title"></div></div>
   <div class="bar" id="bot">
     <div class="seek"><button id="pp">▶</button><span id="cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="dur">0:00</span></div>
-    <div class="chips">
-      <button class="chip" id="bPr">⏮</button>
-      <button class="chip" id="bNx">⏭</button>
-      <button class="chip" id="bFov"></button>
-      <button class="chip" id="bLay"></button>
-      <button class="chip" id="bSplit"></button>
-      <button class="chip" id="bGyro">Head tracking</button>
-      <button class="chip" id="bSwap">Swap eyes</button>
-      <button class="chip" id="bFx">Flat screen</button>
-      <button class="chip" id="bRec">Recenter</button>
-      <button class="chip" id="bFs">Full screen</button>
-      <button class="chip" id="bMore">⚙ More</button>
+    <div class="chips" id="mainchips">
+      <button class="chip" id="bPr">⏮ Prev</button>
+      <button class="chip on" id="bMore">⚙ Settings ▴</button>
+      <button class="chip" id="bNx">Next ⏭</button>
     </div>
   </div>
   <div id="sheet" hidden></div>
@@ -133,7 +140,7 @@ const rv='requestVideoFrameCallback' in HTMLVideoElement.prototype;
 let lastRv=0,vfN=0,vfps=0,rfN=0,rfps=0,fpsT=0;
 if(rv){const vf=()=>{newFrame=true;lastRv=performance.now();vfN++;video.requestVideoFrameCallback(vf)};video.requestVideoFrameCallback(vf)}
 video.addEventListener('loadeddata',()=>{newFrame=true});
-video.addEventListener('loadedmetadata',()=>{if(S.kind==='video'&&renderer&&started){autoI=0;build()}});
+video.addEventListener('loadedmetadata',()=>{if(S.kind==='video'&&renderer&&started){autoI=0;build();if(bigNote())toast('This video is '+video.videoWidth+' px wide. That is too large for an iPhone to play smoothly. Re-encode it to 4096 px wide or less.')}});
 function getTex(){
   const vw=video.videoWidth||1,vh=video.videoHeight||1,mxs=renderer.capabilities.maxTextureSize,
     sc=Math.min(S.vs||VS[autoI],mxs/Math.max(vw,vh)),
@@ -152,6 +159,7 @@ function getTex(){
     newFrame=true}
   tex.flipY=false;tex.minFilter=tex.magFilter=THREE.LinearFilter;tex.generateMipmaps=false;texKey=key;return tex;
 }
+function bigNote(){const w=video.videoWidth;return S.kind==='video'&&w>4200?'  ⚠ '+w+' px wide is more than an iPhone can decode smoothly. Re-encode to 4096 px wide or less.':''}
 function statsText(){
   if(S.kind==='img')return 'Photo';
   const q=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
@@ -216,7 +224,7 @@ function frame(){
   rfN++;if(nw-fpsT>=1000){rfps=rfN*1000/(nw-fpsT);vfps=vfN*1000/(nw-fpsT);rfN=vfN=0;fpsT=nw}
   if(upd){upd=false;ems=ems*.9+(nw-t0)*.1}
   if(nw-uiT>250){uiT=nw;
-    if(!$('#top').classList.contains('hide'))$('#title').textContent=curName+'  ·  '+statsText();
+    const si=$('#sinfo');if(si&&!$('#sheet').hidden)si.textContent=statsText()+bigNote();
     if(!S.vs&&S.kind==='video'&&!video.paused&&autoI<VS.length-1&&ems>12){if(++bad>=8){bad=0;autoI++;build()}}else bad=0;
     if(!seeking&&video.duration){$('#seek').value=video.currentTime/video.duration*1000}
     $('#cur').textContent=fmt(video.currentTime);$('#dur').textContent=fmt(video.duration||0);
@@ -256,26 +264,12 @@ function recenter(){
 }
 
 /* UI */
-function chips(){
-  $('#bFov').textContent=S.fov+'°';
-  $('#bLay').textContent=LAYN[S.layout];
-  $('#bSplit').textContent=S.split?'Headset view':'Single view';
-  $('#bSplit').classList.toggle('on',S.split);
-  $('#bGyro').classList.toggle('on',S.gyro);
-  $('#bSwap').classList.toggle('on',S.swap);$('#bFx').classList.toggle('on',S.flat);
-}
+function chips(){if(!$('#sheet').hidden)renderSheet()}
 function showBar(){
   $('#top').classList.remove('hide');$('#bot').classList.remove('hide');
   clearTimeout(hideT);
   hideT=setTimeout(()=>{if(!video.paused){$('#top').classList.add('hide');$('#bot').classList.add('hide')}},4000);
 }
-$('#bFov').onclick=()=>{S.fov=S.fov===180?360:180;build();showBar()};
-$('#bLay').onclick=()=>{S.layout=LAY[(LAY.indexOf(S.layout)+1)%3];build();showBar()};
-$('#bSplit').onclick=()=>{S.split=!S.split;chips();showBar();if(S.split&&innerHeight>innerWidth)toast('Turn your phone to landscape')};
-$('#bGyro').onclick=()=>{setGyro(!S.gyro);showBar()};
-$('#bSwap').onclick=()=>{S.swap=!S.swap;build();showBar()};
-$('#bRec').onclick=()=>{recenter();showBar()};
-$('#bFs').onclick=()=>{toggleFS();showBar()};
 $('#pp').onclick=()=>{video.paused?video.play():video.pause();showBar()};
 $('#seek').addEventListener('input',e=>{seeking=true;if(video.duration)video.currentTime=e.target.value/1000*video.duration;showBar()});
 $('#seek').addEventListener('change',()=>seeking=false);
@@ -294,6 +288,7 @@ cv.addEventListener('pointermove',e=>{
   else{S.lon+=dx*.005;S.lat=Math.max(-1.5,Math.min(1.5,S.lat+dy*.005))}
 });
 cv.addEventListener('pointerup',()=>{
+  if(drag&&drag.m<8&&!$('#sheet').hidden){$('#sheet').hidden=true;drag=null;return}
   if(drag&&drag.m<8){const hidden=$('#bot').classList.contains('hide');if(hidden)showBar();else{$('#top').classList.add('hide');$('#bot').classList.add('hide')}}
   drag=null;
 });
@@ -357,28 +352,47 @@ function initEx(){ex.page=0;if(srvBase)ex.src='root';else{ex.src='lib';ex.path='
 function renderSheet(){
   const sh=$('#sheet'),top=sh.scrollTop,o=OPT(),im=S.kind==='img';sh.innerHTML='';
   const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
-  const x=el('button','chip','✕ Close');x.onclick=()=>{sh.hidden=true};sh.appendChild(x);
-  const grp=(t,keys)=>{sh.appendChild(el('h3','',t));const r=el('div','chips');keys.forEach(k=>{const[a,f,on]=o[k],b=el('button','chip'+(on?' on':''),a);b.onclick=()=>{f();renderSheet();showBar()};r.appendChild(b)});sh.appendChild(r)};
-  grp('Playback',im?['pr','nx','ss']:['pr','b','pp','f','nx']);
-  grp('Format',['fov','lay','sw','gy','fx']);
-  grp('Options',im?['hv','ql','rc']:['mu','sp','lp','hv','ql','rc','vd']);
-  sh.appendChild(el('h3','','Display'));
-  SLD.forEach(([k,t,mn,mx,fm])=>{const d=el('div','sl'),s=el('span','',t+': '+fm(S[k])),i=el('input');
+  const redo=()=>{renderSheet();showBar()};
+  const grab=el('div','grab');grab.onclick=()=>{sh.hidden=true};sh.appendChild(grab);
+  const sec=t=>sh.appendChild(el('h3','',t));
+  const seg=(label,opts)=>{const r=el('div','row'),s=el('div','seg');r.appendChild(el('label','',label));
+    opts.forEach(([x,on,f])=>{const b=el('button',on?'on':'',x);b.onclick=()=>{f();redo()};s.appendChild(b)});r.appendChild(s);sh.appendChild(r)};
+  const tog=(label,on,f)=>seg(label,[['Off',!on,()=>{if(on)f()}],['On',!!on,()=>{if(!on)f()}]]);
+  const pills=items=>{const r=el('div','row');items.forEach(([x,f])=>{const b=el('button','pill',x);b.onclick=()=>{f();redo();setTimeout(()=>{if(!sh.hidden)renderSheet()},300)};r.appendChild(b)});sh.appendChild(r)};
+  sec('Playback');
+  pills(im?[o.pr,o.nx]:[o.pr,o.b,o.pp,o.f,o.nx]);
+  if(im)seg('Slideshow',SLS.map(v=>[v?v+' s':'Off',S.slide===v,()=>{S.slide=v;imgT=performance.now()}]));
+  else{
+    seg('Speed',SPEEDS.map(v=>[v+'×',S.speed===v,()=>{S.speed=v;video.defaultPlaybackRate=video.playbackRate=v}]));
+    tog('Loop',S.loop,o.lp[1]);tog('Sound',!video.muted,o.mu[1]);
+  }
+  sec('Picture');
+  seg('Format',[180,360].map(v=>[v+'°',S.fov===v,()=>{S.fov=v;build()}]));
+  seg('Layout',[['3D SBS','sbs'],['3D TB','tb'],['2D','mono']].map(([x,k])=>[x,S.layout===k,()=>{S.layout=k;build()}]));
+  seg('Screen',[['Wraparound',!S.flat,()=>{S.flat=false;build()}],['Flat screen',S.flat,()=>{S.flat=true;build()}]]);
+  tog('Swap eyes',S.swap,o.sw[1]);
+  sec('View');
+  tog('Headset view',S.split,o.hv[1]);
+  tog('Head tracking',S.gyro,o.gy[1]);
+  pills([o.rc,['⛶ Full screen',toggleFS]]);
+  sec('Adjust');
+  SLD.forEach(([k,t,mn,mx,fm])=>{const r=el('div','row'),s=el('span','val',fm(S[k])),i=el('input');
     i.type='range';i.min=mn;i.max=mx;i.step=(mx-mn)/200;i.value=S[k];
-    i.oninput=()=>{S[k]=+i.value;s.textContent=t+': '+fm(S[k]);applyView()};d.append(s,i);sh.appendChild(d)});
-  const q=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
-  sh.appendChild(el('h3','','Info'));
-  sh.appendChild(el('div','',S.kind==='img'&&img?img.naturalWidth+'×'+img.naturalHeight+' photo':video.videoWidth+'×'+video.videoHeight+(q?' · dropped '+q.droppedVideoFrames+' of '+q.totalVideoFrames+' frames':'')+' · '+ems.toFixed(0)+' ms/frame · detail '+Math.round(vsc*100)+'%'));
-  sh.appendChild(el('h3','','Files'));
-  const r=el('div','chips');[['⬆ Up',up],['➕ Add',()=>$('#addf').click()]].forEach(([a,f])=>{const b=el('button','chip',a);b.onclick=f;r.appendChild(b)});sh.appendChild(r);
+    i.oninput=()=>{S[k]=+i.value;s.textContent=fm(S[k]);applyView()};
+    r.append(el('label','',t),i,s);sh.appendChild(r)});
+  sec('Performance');
+  seg('Quality',QS.map(v=>[v+'×',S.q===v,()=>{S.q=v;applyQ()}]));
+  if(!im)seg('Detail',DL.map(v=>[v?Math.round(v*100)+'%':'Auto',S.vs===v,()=>{S.vs=v;autoI=0;build()}]));
+  sec('Info');const inf=el('div','info',statsText()+bigNote());inf.id='sinfo';sh.appendChild(inf);
+  sec('Files');
+  pills([['⬆ Up',up],['➕ Add',()=>$('#addf').click()]]);
   ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)});
   sh.scrollTop=top;
 }
-$('#bFx').onclick=()=>{S.flat=!S.flat;build();showBar()};
-{const s=document.createElement('small');s.textContent='Version 9';$('#home').appendChild(s)}
+{const s=document.createElement('small');s.textContent='Version 10';$('#home').appendChild(s)}
 $('#bPr').onclick=()=>{step(-1);showBar()};
 $('#bNx').onclick=()=>{step(1);showBar()};
-$('#bMore').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden)initEx()};
+$('#bMore').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden){showBar();initEx()}};
 
 /* ---------- VR menu: head pointer + keyboard ---------- */
 const CW=1024,CH=512,PW=4,PH=2,PD=2.6;
