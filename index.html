@@ -1,4 +1,4 @@
-<!-- VR Video Player - version 15 -->
+<!-- VR Video Player - version 16 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -145,7 +145,7 @@ function fmt(s){s=Math.max(0,s|0);return(s/60|0)+':'+String(s%60).padStart(2,'0'
 
 function init(){
   renderer=new THREE.WebGLRenderer({canvas:$('#cv'),antialias:false,alpha:false,stencil:false,powerPreference:'high-performance'});
-  renderer.setPixelRatio(S.q*DPR());
+  renderer.setPixelRatio(S.q*DPR());renderer.autoClear=false;
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(90,1,.1,1100);
   scene.add(camera);initVR();
@@ -234,7 +234,7 @@ function frame(){
   if(useGPU){try{gpuDraw(vps)}catch(e){console.warn(e);useGPU=false;$('#cv2').style.display='none';toast('WebGPU failed, switched back to WebGL')}}
   else{
     renderer.setScissorTest(true);
-    vps.forEach(([cam,x,y,w,h])=>{renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.clear();renderer.render(scene,cam)});
+    vps.forEach(([cam,x,y,w,h,uc])=>{renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.clear();renderer.render(scene,cam);if(menu){renderer.clearDepth();renderer.render(scene,uc)}});
   }
   const nw=performance.now();
   rfN++;if(nw-fpsT>=1000){rfps=rfN*1000/(nw-fpsT);vfps=vfN*1000/(nw-fpsT);rfN=vfN=0;fpsT=nw}
@@ -415,8 +415,8 @@ function renderSheet(){
     ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)})}
   sh.scrollTop=top;
 }
-/* VR Video Player version 15 */
-const VERSION=15;
+/* VR Video Player version 16 */
+const VERSION=16;
 {const s=document.createElement('small');s.textContent='Version '+VERSION;$('#home').appendChild(s)}
 if(/^https?:$/.test(location.protocol)){
   fetch(location.pathname,{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -431,7 +431,7 @@ $('#bMore').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden){sh
 
 /* ---------- VR menu: head pointer + keyboard ---------- */
 const CW=1024,CH=512,PW=4,PH=2,PD=2.6,UK=2;
-const DPR=()=>Math.min(window.devicePixelRatio||1,3),fovK=()=>Math.tan((S.split?S.cam:S.cam*.78)*R/2)/Math.tan(45*R),uiS=()=>S.ui*fovK();
+const DPR=()=>Math.min(window.devicePixelRatio||1,3),fovK=()=>1,uiS=()=>S.ui;
 let panel,ctex,pctx,ret,menu=false,page='main',btns=[],hovKey=null,hovX=0,needPlace=false,lastDraw=0,lib=[],libIdx=-1,curName='',sp=0,ac;
 let ex={src:'root',path:'',page:0,items:[]};
 const srvBase=location.protocol==='http:'?location.href.replace(/[^/]*$/,''):'';
@@ -442,11 +442,12 @@ function initVR(){
   const c=document.createElement('canvas');c.width=CW*UK;c.height=CH*UK;pctx=c.getContext('2d');
   ctex=new THREE.CanvasTexture(c);ctex.minFilter=THREE.LinearMipmapLinearFilter;ctex.generateMipmaps=true;ctex.anisotropy=4;
   panel=new THREE.Mesh(new THREE.PlaneGeometry(PW,PH),new THREE.MeshBasicMaterial({map:ctex,transparent:true,depthTest:false}));
-  panel.renderOrder=10;panel.layers.set(1);panel.layers.enable(2);panel.visible=false;scene.add(panel);
+  panel.renderOrder=10;panel.layers.set(3);panel.visible=false;scene.add(panel);
   ret=new THREE.Mesh(new THREE.RingGeometry(.009,.016,24),new THREE.MeshBasicMaterial({color:0xffffff,depthTest:false,transparent:true}));
-  ret.renderOrder=20;ret.layers.set(1);ret.layers.enable(2);ret.visible=false;scene.add(ret);
+  ret.renderOrder=20;ret.layers.set(3);ret.visible=false;scene.add(ret);
   camL=new THREE.PerspectiveCamera(90,1,.1,1100);camR=new THREE.PerspectiveCamera(90,1,.1,1100);
   camL.layers.set(1);camR.layers.set(2);camera.add(camL,camR);
+  uL=new THREE.PerspectiveCamera(90,1,.1,1100);uR=new THREE.PerspectiveCamera(90,1,.1,1100);uL.layers.set(3);uR.layers.set(3);camera.add(uL,uR);
   video.onended=()=>{if(!S.loop&&lib.length>1)step(1)};
 }
 function openMenu(){menu=true;page='main';needPlace=true;panel.visible=ret.visible=true;beep(880)}
@@ -658,12 +659,12 @@ function select(){
   beep(660);b.act(hovX);draw();
 }
 /* ---------- eyes: one camera per eye, lens-centred ---------- */
-let camL,camR;
+let camL,camR,uL,uR;
 function eyes(){
   const w=innerWidth,h=innerHeight;
-  if(!S.split){camL.position.x=0;camL.fov=S.cam*.78;camL.aspect=w/h;camL.clearViewOffset();camL.updateProjectionMatrix();return[[camL,0,0,w,h]]}
+  if(!S.split){[camL,uL].forEach((c,i)=>{c.position.x=0;c.fov=i?70:S.cam*.78;c.aspect=w/h;c.clearViewOffset();c.updateProjectionMatrix()});return[[camL,0,0,w,h,uL]]}
   const vw=w/2,sh=vw/2-S.ipd/2*6.03+S.shift/100*vw,out=[];
-  [camL,camR].forEach((c,e)=>{c.position.x=(e?1:-1)*S.ipd/2000;c.fov=S.cam;c.aspect=vw/h;c.setViewOffset(vw,h,e?sh:-sh,0,vw,h);c.updateProjectionMatrix();out.push([c,e*vw,0,vw,h])});
+  [[camL,uL],[camR,uR]].forEach(([c,u],e)=>{[c,u].forEach((k,i)=>{k.position.x=(e?1:-1)*S.ipd/2000;k.fov=i?90:S.cam;k.aspect=vw/h;k.setViewOffset(vw,h,e?sh:-sh,0,vw,h);k.updateProjectionMatrix()});out.push([c,e*vw,0,vw,h,u])});
   return out;
 }
 
@@ -740,12 +741,12 @@ function gpuDraw(vps){
     pass.setBindGroup(0,d.createBindGroup({layout:pipe.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:G.ub,offset:slot*256,size:96}},{binding:1,resource:G.smp},res]}));
     pass.setVertexBuffer(0,g.V);pass.setIndexBuffer(g.I,g.f);pass.drawIndexed(g.n);slot++;
   };
-  vps.forEach(([cam,x,y,w,h],ei)=>{
+  vps.forEach(([cam,x,y,w,h,uc],ei)=>{
     pass.setViewport(x*sc,y*sc,w*sc,h*sc,0,1);pass.setScissorRect(Math.round(x*sc),Math.round(y*sc),Math.round(w*sc),Math.round(h*sc));
     const m=meshes[ei],b=S.bri;
     if(m&&S.kind==='video'&&G.vok&&G.vt)draw(m,cam,G.pt,{binding:3,resource:G.vt.createView()},[b,b,b,1],0);
     else if(m&&S.kind==='img'&&G.iok&&G.itex)draw(m,cam,G.pt,{binding:3,resource:G.itex.createView()},[b,b,b,1],0);
-    if(menu){draw(panel,cam,G.pt,{binding:3,resource:G.ptex.createView()},[1,1,1,1],1);draw(ret,cam,G.pt,{binding:3,resource:G.white.createView()},[1,1,1,1],0)}
+    if(menu){draw(panel,uc,G.pt,{binding:3,resource:G.ptex.createView()},[1,1,1,1],1);draw(ret,uc,G.pt,{binding:3,resource:G.white.createView()},[1,1,1,1],0)}
   });
   pass.end();d.queue.submit([enc.finish()]);upd=true;
 }
