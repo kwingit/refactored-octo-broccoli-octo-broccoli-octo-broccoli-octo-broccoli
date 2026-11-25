@@ -1,4 +1,4 @@
-<!-- VR Video Player - version 16 -->
+<!-- VR Video Player - version 17 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -415,8 +415,8 @@ function renderSheet(){
     ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)})}
   sh.scrollTop=top;
 }
-/* VR Video Player version 16 */
-const VERSION=16;
+/* VR Video Player version 17 */
+const VERSION=17;
 {const s=document.createElement('small');s.textContent='Version '+VERSION;$('#home').appendChild(s)}
 if(/^https?:$/.test(location.protocol)){
   fetch(location.pathname,{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -549,7 +549,7 @@ async function loadEx(){
   if(ex.src==='root'){ex.items=[{k:'On this phone ('+lib.length+')',d:1,go:go('lib','')},{k:'PC server',d:1,go:go('srv',srvBase)}]}
   else if(ex.src==='lib'){
     const dirs=new Set(),files=[];
-    view().forEach(i=>{const it=lib[i];if(!it.rel.startsWith(ex.path))return;const r=it.rel.slice(ex.path.length),j=r.indexOf('/');if(j>=0)dirs.add(r.slice(0,j));else files.push({k:(it.ok?'':'✕ ')+it.name,i,ok:it.ok})});
+    view().forEach(i=>{const it=lib[i];if(!it.rel.startsWith(ex.path))return;const r=it.rel.slice(ex.path.length),j=r.indexOf('/');if(j>=0)dirs.add(r.slice(0,j));else files.push({k:(!it.ok?'✕ ':smS(it)==='smooth'?'✓ ':(smS(it)==='heavy'||smS(it)==='maybe')?'⚠ ':'')+it.name,i,ok:it.ok})});
     ex.items=[...[...dirs].sort().map(n=>({k:n,d:1,go:go('lib',ex.path+n+'/')})),
       ...files.map(f=>({k:f.k,go:()=>{if(f.ok)playLib(f.i)}}))];
   }else{
@@ -567,9 +567,13 @@ async function loadEx(){
   if(menu)draw();if(!$('#sheet').hidden)renderSheet();
 }
 function playLib(i){const it=lib[i];if(!it)return;libIdx=i;if(objUrl)URL.revokeObjectURL(objUrl);objUrl=URL.createObjectURL(it.file);openVideo(objUrl,it.name)}
-function step(d){if(lib.length)playLib(((libIdx<0?0:libIdx)+d+lib.length)%lib.length)}
-const SORTS=[['name','Name'],['size','Size'],['date','Date'],['type','Type'],['res','Resolution'],['ok','Playable']],SHOWS=[['all','All'],['ok','Playable'],['video','Videos'],['image','Photos'],['smooth','Smooth']];
-const FL={sort:'name',rev:false,show:'all',q:''},capC={};let ftab='phone',probing=false;
+function step(d){
+  const v=view().filter(i=>lib[i].ok);if(!v.length)return;
+  const p=v.indexOf(libIdx),n=p<0?(d>0?0:v.length-1):(p+d+v.length)%v.length;
+  playLib(v[n]);
+}
+const SORTS=[['name','Name'],['smooth','Plays smoothly'],['size','Size'],['date','Date'],['type','Type'],['res','Resolution'],['ok','Compatible']],SHOWS=[['all','All'],['smooth','Plays smoothly'],['notsmooth','Doesn’t play smoothly'],['ok','Compatible'],['video','Videos'],['image','Photos']];
+const FL={sort:'name',rev:false,show:'all',q:''},capC={};let ftab='phone',probing=false,testing=false,stopTest=false,testNote='';
 const mk=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const VEXT=/\.(mp4|m4v|mov|mkv|avi|wmv|flv|webm|ts|mts|m2ts|mpe?g|3gp|ogv)$/i,IEXT=/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp|tiff?)$/i,OKV=/\.(mp4|m4v|mov)$/i,OKI=/\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i;
 function fmtSize(n){return n>1e9?(n/1e9).toFixed(1)+' GB':n>1e6?Math.round(n/1e6)+' MB':Math.round(n/1e3)+' KB'}
@@ -577,17 +581,21 @@ function mkItem(f){
   const n=f.name,img=IEXT.test(n)||/^image\//.test(f.type),vid=VEXT.test(n)||/^video\//.test(f.type);
   if(!img&&!vid)return null;
   const ok=img?OKI.test(n):(OKV.test(n)||(/\.webm$/i.test(n)&&video.canPlayType('video/webm')!==''));
-  return{name:n,rel:f.webkitRelativePath||n,file:f,size:f.size,mod:f.lastModified,kind:img?'image':'video',ok,rate:ok?'':'bad',
+  return{name:n,rel:f.webkitRelativePath||n,file:f,size:f.size,mod:f.lastModified,kind:img?'image':'video',ok,st:'',pred:'',drop:0,
     why:ok?'':(img?'This photo format isn’t supported':n.split('.').pop().toUpperCase()+' isn’t supported on iPhone. Convert it to MP4 or MOV.')};
 }
+/* smoothness: st = tested on this phone, pred = predicted by the phone's decoder report */
+function smS(it){return !it.ok?'bad':it.kind==='image'?'smooth':it.st||it.pred||''}
+function score(it){return !it.ok?-1:it.kind==='image'?60:it.st==='smooth'?100-it.drop:it.st==='maybe'?30:it.st==='heavy'?5:it.pred==='smooth'?70:it.pred==='heavy'?20:50}
 function view(){
   const t=FL.q.toLowerCase();
-  const a=lib.map((it,i)=>i).filter(i=>{const it=lib[i];
+  const a=lib.map((it,i)=>i).filter(i=>{const it=lib[i],s=smS(it);
     if(t&&!it.rel.toLowerCase().includes(t))return false;
-    return FL.show==='all'||(FL.show==='ok'&&it.ok)||(FL.show==='video'&&it.kind==='video')||(FL.show==='image'&&it.kind==='image')||(FL.show==='smooth'&&it.rate==='smooth')});
-  const cmp={name:(x,y)=>x.rel.localeCompare(y.rel,undefined,{numeric:true}),size:(x,y)=>y.size-x.size,date:(x,y)=>y.mod-x.mod,
-    type:(x,y)=>(x.kind===y.kind?0:x.kind==='video'?-1:1)||(y.ok-x.ok)||x.rel.localeCompare(y.rel),
-    res:(x,y)=>((y.w||0)*(y.h||0))-((x.w||0)*(x.h||0)),ok:(x,y)=>(y.ok-x.ok)||x.rel.localeCompare(y.rel)}[FL.sort];
+    return FL.show==='all'||(FL.show==='ok'&&it.ok)||(FL.show==='video'&&it.kind==='video')||(FL.show==='image'&&it.kind==='image')||(FL.show==='smooth'&&s==='smooth')||(FL.show==='notsmooth'&&(s==='heavy'||s==='maybe'))});
+  const nm=(x,y)=>x.rel.localeCompare(y.rel,undefined,{numeric:true});
+  const cmp={name:nm,smooth:(x,y)=>score(y)-score(x)||nm(x,y),size:(x,y)=>y.size-x.size,date:(x,y)=>y.mod-x.mod,
+    type:(x,y)=>(x.kind===y.kind?0:x.kind==='video'?-1:1)||(y.ok-x.ok)||nm(x,y),
+    res:(x,y)=>((y.w||0)*(y.h||0))-((x.w||0)*(x.h||0)),ok:(x,y)=>(y.ok-x.ok)||nm(x,y)}[FL.sort];
   a.sort((i,j)=>cmp(lib[i],lib[j]));if(FL.rev)a.reverse();return a;
 }
 async function capOf(w,h){
@@ -599,24 +607,112 @@ async function capOf(w,h){
       if(!best||(r.smooth&&!best.smooth)||(r.supported&&!best.ok))best={ok:r.supported,smooth:r.smooth,eff:r.powerEfficient}}catch(e){}}
   if(best)capC[k]=best;return best;
 }
-function rateOf(it){
-  if(!it.ok)return 'bad';if(!it.w)return '';if(it.kind==='image'||it.w<=4200)return 'smooth';
-  return it.cap&&it.cap.ok&&it.cap.smooth?'smooth':'heavy';
+/* ---- read codec, frame rate and size straight from an MP4/MOV file ---- */
+const u8=(dv,o)=>dv.getUint8(o),fcc=(dv,o)=>String.fromCharCode(u8(dv,o),u8(dv,o+1),u8(dv,o+2),u8(dv,o+3)),hx=(n,l)=>n.toString(16).toUpperCase().padStart(l,'0');
+function walk(dv,s,e,f){while(s+8<=e){let z=dv.getUint32(s),h=8;const t=fcc(dv,s+4);if(z===1){z=Number(dv.getBigUint64(s+8));h=16}if(z<h||s+z>e)break;f(t,s+h,s+z);s+=z}}
+function codecStr(dv,c,fc){
+  if(c.t==='avcC')return fc+'.'+hx(u8(dv,c.s+1),2)+hx(u8(dv,c.s+2),2)+hx(u8(dv,c.s+3),2);
+  const b=u8(dv,c.s+1),pi=b&31,tier=(b>>5)&1?'H':'L';
+  let cf=dv.getUint32(c.s+2),r=0;for(let i=0;i<32;i++){r=((r*2)+(cf&1))>>>0;cf>>>=1}
+  const cons=[];for(let i=0;i<6;i++)cons.push(u8(dv,c.s+6+i));while(cons.length&&!cons[cons.length-1])cons.pop();
+  return fc+'.'+['','A','B','C'][b>>6]+pi+'.'+r.toString(16).toUpperCase()+'.'+tier+u8(dv,c.s+12)+(cons.length?'.'+cons.map(x=>hx(x,2)).join('.'):'');
+}
+function parseMoov(buf){
+  const dv=new DataView(buf);let o=null;
+  walk(dv,0,buf.byteLength,(t,s,e)=>{
+    if(t!=='trak'||o)return;
+    let vid=false,ts=0,dur=0,cnt=0,fc='',cfg=null,w=0,h=0;
+    walk(dv,s,e,(t2,s2,e2)=>{
+      if(t2==='tkhd'){w=dv.getUint32(e2-8)/65536;h=dv.getUint32(e2-4)/65536}
+      if(t2==='mdia')walk(dv,s2,e2,(t3,s3,e3)=>{
+        if(t3==='hdlr')vid=fcc(dv,s3+8)==='vide';
+        if(t3==='mdhd'){const v=u8(dv,s3);ts=dv.getUint32(s3+(v?20:12));dur=v?Number(dv.getBigUint64(s3+24)):dv.getUint32(s3+16)}
+        if(t3==='minf')walk(dv,s3,e3,(t4,s4,e4)=>{if(t4==='stbl')walk(dv,s4,e4,(t5,s5)=>{
+          if(t5==='stts'){const n=dv.getUint32(s5+4);for(let i=0;i<n;i++)cnt+=dv.getUint32(s5+8+i*8)}
+          if(t5==='stsd'){const es=s5+8;fc=fcc(dv,es+4);walk(dv,es+86,es+dv.getUint32(es),(t6,s6)=>{if(t6==='avcC'||t6==='hvcC')cfg={t:t6,s:s6}})}
+        })});
+      });
+    });
+    if(vid)o={fc,w,h,dur:ts?dur/ts:0,fps:ts&&dur?cnt/(dur/ts):0,cs:cfg?codecStr(dv,cfg,fc):''};
+  });
+  return o;
+}
+async function readMoov(file){
+  let off=0;
+  while(off+8<=file.size){
+    const dv=new DataView(await file.slice(off,off+16).arrayBuffer());let z=dv.getUint32(0),h=8;const t=fcc(dv,4);
+    if(z===1){z=Number(dv.getBigUint64(8));h=16}else if(z===0)z=file.size-off;
+    if(z<8)return null;
+    if(t==='moov')return z>64e6?null:await file.slice(off+h,off+z).arrayBuffer();
+    off+=z;
+  }
+  return null;
+}
+async function capItem(it){
+  if(!navigator.mediaCapabilities||!it.w)return null;
+  const cs=it.cs||(it.w*it.h>8.9e6?'hvc1.1.6.L183.B0':'hvc1.1.6.L153.B0'),br=Math.round(it.size*8/Math.max(1,it.dur||1)),fps=it.fps||30,k=cs+'|'+it.w+'x'+it.h+'|'+Math.round(fps)+'|'+Math.round(br/1e6);
+  if(capC[k])return capC[k];
+  try{const r=await navigator.mediaCapabilities.decodingInfo({type:'file',video:{contentType:'video/mp4; codecs="'+cs+'"',width:it.w,height:it.h,bitrate:br,framerate:fps}});
+    return capC[k]={ok:r.supported,smooth:r.smooth,eff:r.powerEfficient}}catch(e){return null}
+}
+async function scanItem(it){
+  if(it.scanned)return;
+  if(it.kind==='image'){
+    await new Promise(res=>{const u=URL.createObjectURL(it.file),im=new Image();im.onload=()=>{it.w=im.naturalWidth;it.h=im.naturalHeight;URL.revokeObjectURL(u);res()};im.onerror=()=>{URL.revokeObjectURL(u);res()};im.src=u;setTimeout(res,6000)});
+    it.scanned=true;return;
+  }
+  try{const mb=await readMoov(it.file),m=mb&&parseMoov(mb);if(m){it.w=m.w;it.h=m.h;it.fps=m.fps;it.cs=m.cs;it.fc=m.fc;it.dur=m.dur}}catch(e){}
+  if(!it.w||!it.dur)await new Promise(res=>{
+    const u=URL.createObjectURL(it.file),v=document.createElement('video');let done=false;
+    const fin=()=>{if(done)return;done=true;URL.revokeObjectURL(u);res()};
+    v.preload='metadata';v.muted=true;v.onloadedmetadata=()=>{it.w=it.w||v.videoWidth;it.h=it.h||v.videoHeight;it.dur=v.duration;fin()};v.onerror=fin;v.src=u;setTimeout(fin,6000)});
+  it.scanned=true;
+  const c=it.w?await capItem(it):null;
+  it.pred=c?(c.ok&&c.smooth?'smooth':'heavy'):(it.w?(it.w>4200?'heavy':'smooth'):'');
 }
 async function scanLib(){
   if(probing)return;probing=true;refreshLibs();
-  for(const it of lib){
-    if(it.w||!it.ok)continue;
-    await new Promise(res=>{
-      const u=URL.createObjectURL(it.file);let done=false;
-      const fin=()=>{if(done)return;done=true;URL.revokeObjectURL(u);res()};
-      if(it.kind==='image'){const im=new Image();im.onload=()=>{it.w=im.naturalWidth;it.h=im.naturalHeight;fin()};im.onerror=fin;im.src=u}
-      else{const v=document.createElement('video');v.preload='metadata';v.muted=true;v.onloadedmetadata=()=>{it.w=v.videoWidth;it.h=v.videoHeight;it.dur=v.duration;fin()};v.onerror=fin;v.src=u}
-      setTimeout(fin,6000)});
-    if(it.kind==='video'&&it.w)it.cap=await capOf(it.w,it.h);
-    it.rate=rateOf(it);refreshLibs();
-  }
+  for(const it of lib){if(it.ok&&!it.scanned){await scanItem(it);refreshLibs()}}
   probing=false;refreshLibs();
+}
+/* ---- real smoothness test: play the file muted for a few seconds and count dropped frames ---- */
+async function testItem(it){
+  const tv=document.createElement('video');tv.muted=true;tv.playsInline=true;tv.setAttribute('playsinline','');tv.preload='auto';
+  tv.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:.02;pointer-events:none;z-index:-1';document.body.appendChild(tv);
+  const u=URL.createObjectURL(it.file);let n=0;
+  const wait=(ev,ms)=>new Promise(res=>{const t=setTimeout(()=>res(false),ms);tv.addEventListener(ev,()=>{clearTimeout(t);res(true)},{once:true})});
+  it.terr=false;
+  try{
+    tv.src=u;
+    if(!await wait('loadedmetadata',9000))throw 0;
+    it.dur=it.dur||tv.duration;
+    tv.currentTime=Math.max(0,Math.min(tv.duration*.3,tv.duration-5));
+    await wait('seeked',6000);
+    await tv.play();
+    n=0;if(tv.requestVideoFrameCallback){const f=()=>{n++;tv.requestVideoFrameCallback(f)};tv.requestVideoFrameCallback(f)}
+    const q0=tv.getVideoPlaybackQuality(),t0=tv.currentTime,w0=performance.now();
+    await new Promise(r=>setTimeout(r,3500));
+    const q1=tv.getVideoPlaybackQuality(),el=(performance.now()-w0)/1000,adv=tv.currentTime-t0;
+    let pct=100*(q1.droppedVideoFrames-q0.droppedVideoFrames)/Math.max(1,q1.totalVideoFrames-q0.totalVideoFrames);
+    if(tv.requestVideoFrameCallback&&it.fps)pct=Math.max(pct,100*(1-n/(it.fps*el)));
+    pct=Math.max(pct,100*(1-adv/el));
+    it.drop=Math.max(0,Math.min(100,pct));
+    it.st=it.drop<4?'smooth':it.drop<15?'maybe':'heavy';
+  }catch(e){it.terr=true;it.st=''}
+  finally{tv.pause();tv.removeAttribute('src');tv.load();tv.remove();URL.revokeObjectURL(u)}
+}
+async function testLib(){
+  if(testing){stopTest=true;refreshLibs();return}
+  testing=true;stopTest=false;if(started)video.pause();
+  let todo=view().map(i=>lib[i]).filter(it=>it.ok&&it.kind==='video');
+  const fresh=todo.filter(it=>!it.st);if(fresh.length)todo=fresh;else todo.forEach(it=>{it.st=''});
+  let k=0;
+  for(const it of todo){
+    if(stopTest)break;
+    testNote='testing '+(++k)+' of '+todo.length+': '+it.name;refreshLibs();
+    await scanItem(it);await testItem(it);refreshLibs();
+  }
+  testing=false;stopTest=false;testNote='';refreshLibs();
 }
 function refreshLibs(){['#hbox','#sbox'].forEach(s=>{const b=$(s);if(b&&b.getClientRects().length)fillLib(b)})}
 function fillLib(box){
@@ -628,15 +724,23 @@ function fillLib(box){
   ctl.appendChild(sel(SORTS,FL.sort,v=>{FL.sort=v;fillLib(box)}));
   const rv=mk('button','',FL.rev?'▲':'▼');rv.onclick=()=>{FL.rev=!FL.rev;fillLib(box)};ctl.appendChild(rv);
   ctl.appendChild(sel(SHOWS,FL.show,v=>{FL.show=v;fillLib(box)}));
-  [['➕ Files',()=>$('#addf').click()],['📂 Folder',()=>$('#folder').click()],['🔍 Scan details',scanLib],['🗑 Clear',()=>{lib.length=0;libIdx=-1;fillLib(box)}]].forEach(([t,f])=>{const b=mk('button','',t);b.onclick=f;ctl.appendChild(b)});
-  const tot=lib.reduce((s,i)=>s+i.size,0),sm=mk('div','info',lib.length+' files · '+fmtSize(tot)+' · '+lib.filter(i=>i.ok).length+' playable'+(probing?' · scanning…':''));
+  [['➕ Files',()=>$('#addf').click()],['📂 Folder',()=>$('#folder').click()],[testing?'⏹ Stop test':'🧪 Test smoothness',testLib],['🗑 Clear',()=>{lib.length=0;libIdx=-1;fillLib(box)}]].forEach(([t,f])=>{const b=mk('button','',t);b.onclick=f;ctl.appendChild(b)});
+  const tot=lib.reduce((s,i)=>s+i.size,0),untested=lib.some(i=>i.ok&&i.kind==='video'&&!i.st);
+  const sm=mk('div','info',lib.length+' files · '+fmtSize(tot)+' · '+lib.filter(i=>i.ok).length+' compatible'+(probing?' · reading file details…':'')+(testNote?' · '+testNote:'')+(!testing&&untested?' · ≈ means predicted from your phone’s decoder. Tap Test smoothness to check for real.':''));
+  const CN={avc1:'H.264',avc3:'H.264',hvc1:'HEVC',hev1:'HEVC',av01:'AV1',vp09:'VP9'};
   const paint=()=>{
     list.innerHTML='';const v=view();
     if(!v.length)list.appendChild(mk('div','info','Nothing matches.'));
     v.forEach(i=>{
       const it=lib[i],b=mk('button','fr'),t=mk('b','',(it.kind==='image'?'🖼  ':'🎞  ')+it.rel),s=mk('i');
-      const st=!it.ok?['bad','✕ '+it.why]:it.rate==='smooth'?['ok','✓ smooth']:it.rate==='heavy'?['warn','⚠ too heavy for this phone']:null;
-      s.append([fmtSize(it.size),it.w?it.w+'×'+it.h:'',it.dur?fmt(it.dur):'',new Date(it.mod).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'})].filter(Boolean).join(' · ')+(st?' · ':''));
+      const d=Math.round(it.drop||0),st=!it.ok?['bad','✕ '+it.why]
+        :it.terr?['warn','could not test this file']
+        :it.st==='smooth'?['ok','✓ plays smoothly'+(d?' · '+d+'% dropped':'')]
+        :it.st==='maybe'?['warn','⚠ borderline · '+d+'% dropped']
+        :it.st==='heavy'?['bad','✕ doesn’t play smoothly · '+d+'% dropped']
+        :it.pred==='smooth'?['ok','≈ likely smooth']
+        :it.pred==='heavy'?['warn','≈ likely too heavy for this phone']:null;
+      s.append([fmtSize(it.size),it.w?it.w+'×'+it.h:'',it.fps?Math.round(it.fps*10)/10+' fps':'',CN[it.fc]||'',it.dur?fmt(it.dur):'',new Date(it.mod).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'})].filter(Boolean).join(' · ')+(st?' · ':''));
       if(st)s.appendChild(mk('span',st[0],st[1]));
       b.append(t,s);b.onclick=()=>{if(it.ok)playLib(i);else if($('#player').hidden)alert(it.why);else toast(it.why)};list.appendChild(b)});
   };
@@ -647,7 +751,7 @@ function addFiles(files){
   const its=[...files].map(mkItem).filter(Boolean);
   if(!its.length){toast('No videos or photos found');return}
   const have=new Set(lib.map(i=>i.rel+'|'+i.size)),fresh=its.filter(i=>!have.has(i.rel+'|'+i.size)),first=lib.length;
-  fresh.forEach(i=>lib.push(i));
+  fresh.forEach(i=>lib.push(i));scanLib();
   if(started){toast(fresh.length+' added');refreshLibs();if(page==='files'&&menu)loadEx();return}
   if(its.length===1&&fresh.length===1&&fresh[0].ok){playLib(first);return}
   $('#hlib').hidden=false;refreshLibs();$('#hlib').scrollIntoView({behavior:'smooth'});
