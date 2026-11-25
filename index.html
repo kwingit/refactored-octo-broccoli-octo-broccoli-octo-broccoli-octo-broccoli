@@ -1,4 +1,4 @@
-<!-- VR Video Player - version 17 -->
+<!-- VR Video Player - version 18 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -81,6 +81,14 @@ small{color:var(--mut);display:block;margin-top:18px}
 .seg button.on{background:var(--acc)}
 #sheet .pill{flex:1;background:rgba(255,255,255,.14);border:0;border-radius:10px;padding:10px 4px;font-size:13px;color:#fff}
 #sheet .info{font-size:12px;line-height:1.5;color:#c9ced6}
+#ytp{position:fixed;inset:0;background:#000;z-index:20;overflow:hidden;touch-action:none;color:#fff}
+.ye{position:absolute;top:0;height:100%;overflow:hidden}
+.ycam,.yscr{position:absolute;left:0;top:0;transform-style:preserve-3d}
+.yscr{width:1280px;height:720px;background:#111}
+.yscr iframe{width:1280px;height:720px;border:0;display:block}
+#yeR iframe{pointer-events:none}
+#ybar{position:absolute;left:0;right:0;bottom:0;padding:10px 10px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.8));z-index:3;transition:opacity .25s}
+#ymsg{position:absolute;top:10px;left:0;right:0;text-align:center;font-size:14px;z-index:3;padding:0 14px;text-shadow:0 1px 3px #000;pointer-events:none}
 </style>
 </head>
 <body>
@@ -95,6 +103,9 @@ small{color:var(--mut);display:block;margin-top:18px}
     <input id="folder" type="file" webkitdirectory hidden>
   </label>
   <input id="addf" type="file" accept="video/*,image/*,.mp4,.m4v,.mov,.heic" multiple hidden>
+  <div class="card"><h2>YOUTUBE (EXPERIMENTAL)</h2>
+    <div style="display:flex;gap:8px"><input id="yturl" type="text" placeholder="Paste a YouTube link" autocapitalize="off" autocorrect="off"><button class="btn" id="ytgo">Open</button></div>
+    <div style="font-size:13px;color:var(--mut);margin-top:8px;line-height:1.5">Shows the video twice, once for each eye, on a flat screen that stays put when you turn your head. Tap the left video once to start it with sound, then put the phone in the headset. Some videos don’t allow embedding.</div></div>
   <div class="card" id="hlib" hidden><h2>YOUR FILES</h2><div id="hbox"></div></div>
   <button class="btn" id="tt" style="margin-top:16px;width:100%;padding:14px;font-size:16px">Test head tracking</button>
   <div id="gs" style="font-size:14px;margin-top:8px;color:var(--mut)"></div>
@@ -127,6 +138,15 @@ small{color:var(--mut);display:block;margin-top:18px}
   <div id="toast" hidden></div>
 </div>
 
+<div id="ytp" hidden>
+  <div class="ye" id="yeL"><div class="ycam" id="ycL"><div class="yscr" id="ysL"><div id="ypL"></div></div></div></div>
+  <div class="ye" id="yeR"><div class="ycam" id="ycR"><div class="yscr" id="ysR"><div id="ypR"></div></div></div></div>
+  <div id="ymsg"></div>
+  <div id="ybar">
+    <button class="chip" id="ybk">‹ Back</button><button class="chip" id="ypp">⏯ Play / pause</button><button class="chip" id="ym10">−10 s</button><button class="chip" id="yp10">+10 s</button>
+    <button class="chip" id="ymu">Sound on/off</button><button class="chip on" id="yfl">Floating screen</button><button class="chip" id="yrc">Recenter</button><button class="chip" id="ygy">Head tracking</button><button class="chip on" id="yhv">Headset view</button>
+  </div>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=s=>document.querySelector(s), R=Math.PI/180;
@@ -415,8 +435,8 @@ function renderSheet(){
     ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)})}
   sh.scrollTop=top;
 }
-/* VR Video Player version 17 */
-const VERSION=17;
+/* VR Video Player version 18 */
+const VERSION=18;
 {const s=document.createElement('small');s.textContent='Version '+VERSION;$('#home').appendChild(s)}
 if(/^https?:$/.test(location.protocol)){
   fetch(location.pathname,{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -900,15 +920,115 @@ const KM={
   Minus:()=>adj('bri',-.05),Equal:()=>adj('bri',.05),KeyT:()=>cycleEngine(),KeyA:()=>OPT().af[1](),
   Escape:()=>{if(!$('#keys').hidden)$('#keys').hidden=true;else closeMenu()}
 };
+/* ---------- YouTube screen: YouTube's own embedded player, shown once per eye ---------- */
+let ytOn=false,ytFloat=true,ytP=[null,null],ytArg=null,ytTimer=0,ytBarT=0,ytd=null;
+const YD=1000,YW=1280,YH=720,ID_Q=new THREE.Quaternion(),ym=[new THREE.Matrix4(),new THREE.Matrix4(),new THREE.Matrix4()],yv=[new THREE.Vector3(),new THREE.Vector3(1,1,1)];
+const cssE=n=>Math.abs(n)<1e-10?0:n;
+const camCSS=m=>{const e=m.elements;return 'matrix3d('+[e[0],-e[1],e[2],e[3],e[4],-e[5],e[6],e[7],e[8],-e[9],e[10],e[11],e[12],-e[13],e[14],e[15]].map(cssE)+')'};
+const objCSS=m=>{const e=m.elements;return 'matrix3d('+[e[0],e[1],e[2],e[3],-e[4],-e[5],-e[6],-e[7],e[8],e[9],e[10],e[11],e[12],e[13],e[14],e[15]].map(cssE)+')'};
+function headQ(){const q=new THREE.Quaternion();if(S.gyro){yawQ.setFromAxisAngle(Y,S.yaw);q.copy(yawQ).multiply(dev).multiply(pitQ.setFromAxisAngle(X,S.pit))}else{eul.set(S.lat,S.lon,0,'YXZ');q.setFromEuler(eul)}return q}
+function ytParse(u){
+  u=(u||'').trim();
+  const m=u.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([\w-]{11})/)||(/^[\w-]{11}$/.test(u)?[0,u]:null);
+  if(!m)return null;
+  const tm=u.match(/[?&](?:t|start)=(\d+)/),lm=u.match(/[?&]list=([\w-]+)/);
+  return{id:m[1],t:tm?+tm[1]:0,list:lm?lm[1]:''};
+}
+function ytMake(){
+  const o=ytArg;
+  [0,1].forEach(e=>{
+    const pv={playsinline:1,controls:0,rel:0,modestbranding:1,iv_load_policy:3,fs:0,disablekb:1,start:o.t};
+    if(/^https?:/.test(location.protocol))pv.origin=location.origin;
+    if(o.list)pv.list=o.list;
+    ytP[e]=new YT.Player(e?'ypR':'ypL',{width:YW,height:YH,videoId:o.id,playerVars:pv,events:{
+      onReady:ev=>{if(e)ev.target.mute();else $('#ymsg').textContent='Tap the left video once to start with sound'},
+      onError:ev=>{$('#ymsg').textContent='YouTube can’t play this video here (error '+ev.data+'). Some videos block embedding.'}}});
+  });
+}
+function ytOpen(o){
+  ytArg=o;ytOn=true;$('#home').hidden=true;$('#ytp').hidden=false;$('#ymsg').textContent='Loading YouTube…';ytBar();
+  try{if(localStorage.getItem('vrGyro')==='1')setGyro(true,true)}catch(e){}
+  const go=()=>{ytMake();ytTimer=setInterval(ytSync,500);ytLoop()};
+  if(window.YT&&YT.Player)go();
+  else{window.onYouTubeIframeAPIReady=go;const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';s.onerror=()=>{$('#ymsg').textContent='Could not reach YouTube. Check your connection.'};document.head.appendChild(s)}
+}
+function ytClose(){
+  ytOn=false;clearInterval(ytTimer);
+  ytP.forEach(p=>{try{p&&p.destroy()}catch(e){}});ytP=[null,null];
+  ['L','R'].forEach(s=>{$('#ys'+s).innerHTML='<div id="yp'+s+'"></div>'});
+  $('#ytp').hidden=true;$('#home').hidden=false;
+}
+function ytBar(){const b=$('#ybar');b.classList.remove('hide');clearTimeout(ytBarT);ytBarT=setTimeout(()=>b.classList.add('hide'),5000)}
+const ytAll=f=>ytP.forEach(p=>{try{p&&f(p)}catch(e){}});
+function ytSync(){
+  const a=ytP[0],b=ytP[1];if(!a||!b||!a.getPlayerState||!b.getPlayerState)return;
+  const st=a.getPlayerState(),t0=a.getCurrentTime(),t1=b.getCurrentTime();
+  if(st===1){if(b.getPlayerState()!==1)b.playVideo();if(Math.abs(t0-t1)>.3)b.seekTo(t0+.05,true)}
+  else if(st===2&&b.getPlayerState()===1)b.pauseVideo();
+}
+function ytPlayPause(){const p=ytP[0];if(!p)return;if(p.getPlayerState()===1)ytAll(x=>x.pauseVideo());else ytAll(x=>x.playVideo())}
+function ytSeekTo(f){const d=ytP[0]&&ytP[0].getDuration();if(d)ytAll(x=>x.seekTo(Math.min(f,.999)*d,true))}
+function ytSeekBy(s){const p=ytP[0];if(p)ytAll(x=>x.seekTo(Math.max(0,p.getCurrentTime()+s),true))}
+function ytMuteT(){const p=ytP[0];if(!p)return;if(p.isMuted())p.unMute();else p.mute()}
+function ytSpd(d){const p=ytP[0];if(!p)return;const rs=p.getAvailablePlaybackRates?p.getAvailablePlaybackRates():[.5,1,1.5,2],i=Math.max(0,Math.min(rs.length-1,rs.indexOf(p.getPlaybackRate())+d));ytAll(x=>x.setPlaybackRate(rs[i]))}
+function ytKey(e){
+  const k=e.code;ytBar();
+  switch(k){
+    case 'Enter':case 'KeyK':ytPlayPause();break;
+    case 'ArrowRight':ytSeekBy(e.shiftKey?60:10);break;
+    case 'ArrowLeft':ytSeekBy(e.shiftKey?-60:-10);break;
+    case 'KeyM':ytMuteT();break;
+    case 'KeyR':recenter();break;
+    case 'KeyD':ytFloat=!ytFloat;$('#yfl').classList.toggle('on',ytFloat);break;
+    case 'KeyH':S.split=!S.split;$('#yhv').classList.toggle('on',S.split);break;
+    case 'KeyG':setGyro(!S.gyro);break;
+    case 'BracketLeft':ytSpd(-1);break;case 'BracketRight':ytSpd(1);break;
+    case 'Comma':adj('shift',-1);break;case 'Period':adj('shift',1);break;
+    case 'Semicolon':adj('ipd',-1);break;case 'Quote':adj('ipd',1);break;
+    case 'Minus':adj('scr',-.05);break;case 'Equal':adj('scr',.05);break;
+    case 'ArrowUp':adj('cam',-5);break;case 'ArrowDown':adj('cam',5);break;
+    case 'Escape':ytClose();break;
+    default:if(/^Digit\d$/.test(k)){ytSeekTo(+k[5]/10);break}return false;
+  }
+  return true;
+}
+function ytLoop(){
+  if(!ytOn)return;requestAnimationFrame(ytLoop);
+  const w=innerWidth,h=innerHeight,two=S.split,vw=two?w/2:w,q=ytFloat?headQ():ID_Q,fp=(h/2)/Math.tan(S.cam*R/2);
+  const sh=two?vw/2-S.ipd/2*6.03+S.shift/100*vw:0,sc=2*YD*Math.tan(32*R)/YW*S.scr;
+  ym[2].compose(yv[0].set(0,0,-YD),ID_Q,yv[1].set(sc,sc,sc));
+  const objT='translate(-50%,-50%) '+objCSS(ym[2]);
+  for(let e=0;e<2;e++){
+    const eye=$('#ye'+(e?'R':'L'));
+    if(e&&!two){eye.style.display='none';continue}
+    eye.style.display='block';eye.style.left=(e*vw)+'px';eye.style.width=vw+'px';eye.style.perspective=fp+'px';
+    ym[1].makeTranslation(two?(e?1:-1)*S.ipd/2000*(YD/6):0,0,0);
+    ym[0].compose(yv[0].set(0,0,0),q,yv[1].set(1,1,1)).multiply(ym[1]);
+    ym[1].copy(ym[0]).invert();
+    const cs=$('#yc'+(e?'R':'L')).style;cs.width=vw+'px';cs.height=h+'px';
+    cs.transform='translateZ('+fp+'px) '+camCSS(ym[1])+' translate('+(vw/2+(e?-sh:sh))+'px,'+(h/2)+'px)';
+    $('#ys'+(e?'R':'L')).style.transform=objT;
+  }
+}
+$('#ytgo').onclick=()=>{const o=ytParse($('#yturl').value);if(!o){alert('That doesn’t look like a YouTube link.');return}ytOpen(o)};
+$('#ybk').onclick=ytClose;$('#ypp').onclick=ytPlayPause;$('#ym10').onclick=()=>ytSeekBy(-10);$('#yp10').onclick=()=>ytSeekBy(10);$('#ymu').onclick=ytMuteT;
+$('#yfl').onclick=()=>{ytFloat=!ytFloat;$('#yfl').classList.toggle('on',ytFloat)};$('#yrc').onclick=()=>recenter();$('#ygy').onclick=()=>setGyro(!S.gyro);
+$('#yhv').onclick=()=>{S.split=!S.split;$('#yhv').classList.toggle('on',S.split)};
+$('#ytp').addEventListener('pointerdown',e=>{ytBar();if(e.target.closest('#ybar')||e.target.tagName==='IFRAME')return;ytd={x:e.clientX,y:e.clientY}});
+addEventListener('pointermove',e=>{if(!ytd||!ytOn)return;const dx=e.clientX-ytd.x,dy=e.clientY-ytd.y;ytd.x=e.clientX;ytd.y=e.clientY;
+  if(S.gyro){S.yaw+=dx*.005;S.pit=Math.max(-1.4,Math.min(1.4,S.pit+dy*.005))}else{S.lon+=dx*.005;S.lat=Math.max(-1.5,Math.min(1.5,S.lat+dy*.005))}});
+addEventListener('pointerup',()=>{ytd=null});
+
 function onKey(e){
-  if(!started||(e.target.tagName==='INPUT'&&e.target.type==='text'))return;
+  if((!started&&!ytOn)||(e.target.tagName==='INPUT'&&e.target.type==='text'))return;
   const k=e.code;
   if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();
   if(k==='Space'||e.key===' '){
     e.preventDefault();if(e.repeat||e.type==='keyup')return;
     if(sp){clearTimeout(sp);sp=0;recenter();needPlace=true;beep(520,.05);setTimeout(()=>beep(520,.05),100)}
-    else sp=setTimeout(()=>{sp=0;select()},280);
+    else sp=setTimeout(()=>{sp=0;ytOn?ytPlayPause():select()},280);
   }else if(e.type==='keydown'){
+    if(ytOn){if(ytKey(e)){e.preventDefault();tick()}return}
     const dg=/^Digit\d$/.test(k)?+k[5]:-1;
     if(k==='ArrowRight'||k==='ArrowLeft'){e.preventDefault();const s=k==='ArrowRight'?1:-1;if(S.kind==='img')step(s);else video.currentTime+=s*(e.shiftKey?60:10);tick()}
     else if(dg>=0){e.preventDefault();seekTo(dg/10);tick()}
