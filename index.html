@@ -1,4 +1,4 @@
-<!-- VR Video Player - version 18 -->
+<!-- VR Video Player - version 20 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -89,6 +89,13 @@ small{color:var(--mut);display:block;margin-top:18px}
 #yeR iframe{pointer-events:none}
 #ybar{position:absolute;left:0;right:0;bottom:0;padding:10px 10px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.8));z-index:3;transition:opacity .25s}
 #ymsg{position:absolute;top:10px;left:0;right:0;text-align:center;font-size:14px;z-index:3;padding:0 14px;text-shadow:0 1px 3px #000;pointer-events:none}
+.yu{pointer-events:none;z-index:2}
+.ypan{position:absolute;left:0;top:0;width:1024px;height:512px}
+.yret{position:absolute;left:0;top:0;width:40px;height:40px;box-sizing:border-box;border:4px solid #fff;border-radius:50%;box-shadow:0 0 4px #000}
+.yrow{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid rgba(128,128,128,.25);padding:8px 2px;color:inherit;font:inherit}
+.yrow b{display:block;font-size:14px;line-height:1.3}
+.yrow i{display:block;font-style:normal;font-size:12px;opacity:.7;margin-top:2px}
+.yti{width:120px;height:68px;object-fit:cover;border-radius:6px;flex:none;background:#222}
 </style>
 </head>
 <body>
@@ -105,7 +112,12 @@ small{color:var(--mut);display:block;margin-top:18px}
   <input id="addf" type="file" accept="video/*,image/*,.mp4,.m4v,.mov,.heic" multiple hidden>
   <div class="card"><h2>YOUTUBE (EXPERIMENTAL)</h2>
     <div style="display:flex;gap:8px"><input id="yturl" type="text" placeholder="Paste a YouTube link" autocapitalize="off" autocorrect="off"><button class="btn" id="ytgo">Open</button></div>
-    <div style="font-size:13px;color:var(--mut);margin-top:8px;line-height:1.5">Shows the video twice, once for each eye, on a flat screen that stays put when you turn your head. Tap the left video once to start it with sound, then put the phone in the headset. Some videos don’t allow embedding.</div></div>
+    <div style="font-size:13px;color:var(--mut);margin-top:8px;line-height:1.5">Shows the video twice, once for each eye, on a flat screen that stays put when you turn your head. Tap the left video once to start it with sound, then put the phone in the headset. Settings, the headset menu and the keyboard shortcuts work here too. Some videos don’t allow embedding.</div></div>
+  <div class="card"><h2>SEARCH YOUTUBE</h2><div id="ysui"></div></div>
+  <div class="card"><h2>BROWSE YOUTUBE IN SAFARI, WATCH HERE</h2>
+    <div style="font-size:13px;color:var(--mut);line-height:1.55">Use YouTube normally in Safari, with sign-in and recommendations. When you find a video, tap a bookmark that sends it to this player. One-time setup:<br>1. Tap <b>Copy bookmark code</b> below.<br>2. In Safari, bookmark any page (Share, then Add Bookmark). Open Bookmarks, tap Edit, open that bookmark, rename it “Open in VR”, and paste the code in place of the web address.<br>3. On a YouTube page, open Bookmarks and tap <b>Open in VR</b>.</div>
+    <button class="btn" id="bmcopy" style="margin-top:10px;width:100%;padding:12px">Copy bookmark code</button>
+    <div id="bmmsg" style="font-size:13px;margin-top:6px;color:var(--mut)"></div></div>
   <div class="card" id="hlib" hidden><h2>YOUR FILES</h2><div id="hbox"></div></div>
   <button class="btn" id="tt" style="margin-top:16px;width:100%;padding:14px;font-size:16px">Test head tracking</button>
   <div id="gs" style="font-size:14px;margin-top:8px;color:var(--mut)"></div>
@@ -141,10 +153,11 @@ small{color:var(--mut);display:block;margin-top:18px}
 <div id="ytp" hidden>
   <div class="ye" id="yeL"><div class="ycam" id="ycL"><div class="yscr" id="ysL"><div id="ypL"></div></div></div></div>
   <div class="ye" id="yeR"><div class="ycam" id="ycR"><div class="yscr" id="ysR"><div id="ypR"></div></div></div></div>
+  <div class="ye yu" id="yuL"><div class="ycam" id="ycuL"><canvas class="ypan" id="ypanL" width="2048" height="1024"></canvas><div class="yret" id="yretL"></div></div></div>
+  <div class="ye yu" id="yuR"><div class="ycam" id="ycuR"><canvas class="ypan" id="ypanR" width="2048" height="1024"></canvas><div class="yret" id="yretR"></div></div></div>
   <div id="ymsg"></div>
   <div id="ybar">
-    <button class="chip" id="ybk">‹ Back</button><button class="chip" id="ypp">⏯ Play / pause</button><button class="chip" id="ym10">−10 s</button><button class="chip" id="yp10">+10 s</button>
-    <button class="chip" id="ymu">Sound on/off</button><button class="chip on" id="yfl">Floating screen</button><button class="chip" id="yrc">Recenter</button><button class="chip" id="ygy">Head tracking</button><button class="chip on" id="yhv">Headset view</button>
+    <button class="chip" id="ybk">‹ Back</button><button class="chip" id="ypp">⏯ Play / pause</button><button class="chip" id="ym10">−10 s</button><button class="chip" id="yp10">+10 s</button><button class="chip on" id="ycfg">⚙ Settings ▴</button>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -238,9 +251,10 @@ function build(){
 
 function frame(){
   requestAnimationFrame(frame);
-  if(!started)return;
+  if(!started&&!ytOn)return;
   if(S.gyro){yawQ.setFromAxisAngle(Y,S.yaw);camera.quaternion.copy(yawQ).multiply(dev).multiply(pitQ.setFromAxisAngle(X,S.pit))}
   else{eul.set(S.lat,S.lon,0,'YXZ');camera.quaternion.setFromEuler(eul)}
+  if(ytOn){vrUpdate();ytDom();return}
   if(S.kind==='img'&&S.slide&&lib.length>1&&performance.now()-imgT>S.slide*1000){imgT=performance.now();step(1)}
   const t0=performance.now();
   if(!useGPU&&S.kind==='video'&&tex&&video.readyState>=2){
@@ -389,9 +403,9 @@ function OPT(){const v=video;return{
 }}
 function initEx(){ex.page=0;if(srvBase)ex.src='root';else{ex.src='lib';ex.path=''}loadEx()}
 function renderSheet(){
-  const sh=$('#sheet'),top=sh.scrollTop,o=OPT(),im=S.kind==='img';sh.innerHTML='';
+  const sh=$('#sheet'),top=sh.scrollTop,o=OPT(),im=S.kind==='img',yt=ytOn;sh.innerHTML='';
   const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
-  const redo=()=>{renderSheet();showBar()};
+  const redo=()=>{renderSheet();yt?ytBar():showBar()};
   const hd=el('div','shead');hd.appendChild(el('span','','Settings'));
   const xb=el('button','xbtn','✕ Close');xb.onclick=()=>{sh.hidden=true};hd.appendChild(xb);sh.appendChild(hd);
   const sec=t=>sh.appendChild(el('h3','',t));
@@ -400,26 +414,37 @@ function renderSheet(){
   const tog=(label,on,f)=>seg(label,[['Off',!on,()=>{if(on)f()}],['On',!!on,()=>{if(!on)f()}]]);
   const pills=items=>{const r=el('div','row');items.forEach(([x,f])=>{const b=el('button','pill',x);b.onclick=()=>{f();redo();setTimeout(()=>{if(!sh.hidden)renderSheet()},300)};r.appendChild(b)});sh.appendChild(r)};
   sec('Playback');
+  if(yt){
+    pills([['⏯ Play / pause',ytPlayPause],['−10 s',()=>ytSeekBy(-10)],['+10 s',()=>ytSeekBy(10)],['⏮',()=>ytAll(x=>x.previousVideo&&x.previousVideo())],['⏭',()=>ytAll(x=>x.nextVideo&&x.nextVideo())]]);
+    const rs=(ytP[0]&&ytP[0].getAvailablePlaybackRates&&ytP[0].getAvailablePlaybackRates()||[.5,1,1.5,2]).filter(v=>v>=.5&&v<=2);
+    seg('Speed',rs.map(v=>[v+'×',ytP[0]&&ytP[0].getPlaybackRate()===v,()=>ytAll(x=>x.setPlaybackRate(v))]));
+    tog('Sound',!!(ytP[0]&&!ytP[0].isMuted()),ytMuteT);
+  }else{
   pills(im?[o.pr,o.nx]:[o.pr,o.b,o.pp,o.f,o.nx]);
   if(im)seg('Slideshow',SLS.map(v=>[v?v+' s':'Off',S.slide===v,()=>{S.slide=v;imgT=performance.now()}]));
   else{
     seg('Speed',SPEEDS.map(v=>[v+'×',S.speed===v,()=>{S.speed=v;video.defaultPlaybackRate=video.playbackRate=v}]));
     tog('Loop',S.loop,o.lp[1]);tog('Sound',!video.muted,o.mu[1]);
   }
+  }
   sec('Picture');
+  if(yt)seg('Screen',[['Floating in space',ytFloat,()=>ytSetFloat(true)],['Fixed to head',!ytFloat,()=>ytSetFloat(false)]]);
+  else{
   seg('Format',[180,360].map(v=>[v+'°',S.fov===v,()=>{S.fov=v;build()}]));
   seg('Layout',[['3D SBS','sbs'],['3D TB','tb'],['2D','mono']].map(([x,k])=>[x,S.layout===k,()=>{S.layout=k;build()}]));
   seg('Screen',[['Wraparound',!S.flat,()=>{S.flat=false;build()}],['Flat screen',S.flat,()=>{S.flat=true;build()}]]);
   tog('Swap eyes',S.swap,o.sw[1]);
+  }
   sec('View');
   tog('Headset view',S.split,o.hv[1]);
   tog('Head tracking',S.gyro,o.gy[1]);
-  pills([o.rc,['⛶ Full screen',toggleFS],['⌨ Keys',toggleKeys]]);
+  pills([o.rc,['⛶ Full screen',toggleFS],['⌨ Keys',toggleKeys]].concat(yt?[['⏏ Exit YouTube',ytClose]]:[]));
   sec('Adjust');
   SLD.forEach(([k,t,mn,mx,fm])=>{const r=el('div','row'),s=el('span','val',fm(S[k])),i=el('input');
     i.type='range';i.min=mn;i.max=mx;i.step=(mx-mn)/200;i.value=S[k];
     i.oninput=()=>{S[k]=+i.value;s.textContent=fm(S[k]);applyView()};
     r.append(el('label','',t),i,s);sh.appendChild(r)});
+  if(yt){sec('Search YouTube');const sb=el('div');sb.id='ysui2';sh.appendChild(sb);ytSearchUI(sb);sec('Info');const p=ytP[0];sh.appendChild(el('div','info','YouTube'+(ytTitle?' · '+ytTitle:'')+(p&&p.getDuration?' · '+fmt(p.getCurrentTime())+' / '+fmt(p.getDuration()):'')+'. Quality, Detail and Engine apply to the app’s own video player, not to YouTube.'));sh.scrollTop=top;return}
   sec('Performance');
   seg('Quality',QS.map(v=>[Math.round(v*100)+'%',S.q===v,()=>{S.q=v;applyQ()}]));
   if(!im)seg('Detail',DL.map(v=>[v?Math.round(v*100)+'%':'Auto',S.vs===v,()=>{S.vs=v;autoI=0;build()}]));
@@ -435,8 +460,8 @@ function renderSheet(){
     ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)})}
   sh.scrollTop=top;
 }
-/* VR Video Player version 18 */
-const VERSION=18;
+/* VR Video Player version 20 */
+const VERSION=20;
 {const s=document.createElement('small');s.textContent='Version '+VERSION;$('#home').appendChild(s)}
 if(/^https?:$/.test(location.protocol)){
   fetch(location.pathname,{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -509,13 +534,14 @@ function drawBtn(b){
 function draw(){
   lastDraw=performance.now();
   const c=pctx;c.setTransform(UK,0,0,UK,0,0);c.clearRect(0,0,CW,CH);rr(0,0,CW,CH,28,'rgba(14,16,20,.92)');
-  btns=[];({main:mainPage,disp:dispPage,fit:fitPage,keys:keysPage,files:filePage}[page]||mainPage)();
+  btns=[];({main:mainPage,disp:dispPage,fit:fitPage,keys:keysPage,files:filePage,ytsearch:ytSearchPage}[page]||mainPage)();
   btns.forEach(drawBtn);
   c.fillStyle='rgba(255,255,255,.55)';c.font='19px '+FONT;c.textAlign='center';
   c.fillText('Look at a button · Space = select · Double-Space = recenter · ← → = skip 10 s · Space on empty = close',CW/2,494,CW-40);
-  ctex.needsUpdate=true;G.pdirty=true;
+  ctex.needsUpdate=true;G.pdirty=true;ytPD=true;
 }
 function mainPage(){
+  if(ytOn)return ytMainPage();
   const v=video,d=v.duration||0,o=OPT(),im=S.kind==='img',RW=(y,keys)=>row(y,72,keys.map(k=>[k,...o[k]]));
   add('title',curName,24,14,820,58,null,false,true);
   add('x','✕ Close',850,14,150,58,closeMenu);
@@ -527,6 +553,7 @@ function mainPage(){
   RW(398,['rc','fx','fl','ds']);
 }
 function dispPage(){
+  if(ytOn)return ytDispPage();
   const o=OPT();
   add('title',statsText(),24,14,820,58,null,false,true);
   add('x','✕ Close',850,14,150,58,closeMenu);
@@ -545,7 +572,7 @@ function keysPage(){
   add('title','Keyboard shortcuts',24,14,640,58,null,false,true);
   add('bk','‹ Back',700,14,140,58,()=>{page='disp'});
   add('x','✕ Close',850,14,150,58,closeMenu);
-  KH.forEach(([a,b],i)=>{add('k'+i,a+'   '+b,24+(i<13?0:1)*500,78+(i%13)*31,490,30,null,false,true).fs=18});
+  const pc=Math.ceil(KH.length/2);KH.forEach(([a,b],i)=>{add('k'+i,a+'   '+b,24+(i<pc?0:1)*500,78+(i%pc)*29,490,28,null,false,true).fs=18});
 }
 function filePage(){
   const per=5,n=ex.items.length,pages=Math.max(1,Math.ceil(n/per));
@@ -896,7 +923,7 @@ function autoEngine(){
 }
 
 /* ---------- keyboard shortcuts ---------- */
-const KH=[['Space','Open menu · select what you look at'],['Space ×2','Recenter'],['Enter  K','Play / pause'],['← →','Skip 10 s (Shift: 1 min)'],['0–9','Jump to 0–90 %'],['Home  End','Start / end'],['N  P','Next / previous file'],['M','Mute'],['[  ]','Slower / faster'],['L','Loop'],['R','Recenter'],['G','Head tracking'],['H','Headset view'],['F','Full screen'],['Q','180° / 360°'],['W','Layout'],['E','Swap eyes'],['D','Flat screen'],['↑ ↓','Field of view'],['Z  X','Eye convergence'],[',  .','Image shift (line up eyes)'],[';  ’','Eye spacing'],['-  =','Brightness'],['T','Engine: auto / WebGL / WebGPU'],['A','Auto-slow for heavy videos'],['?','This list (Esc closes)']];
+const KH=[['Space','Open menu · select what you look at'],['Space ×2','Recenter'],['Enter  K','Play / pause'],['← →','Skip 10 s (Shift: 1 min)'],['0–9','Jump to 0–90 %'],['Home  End','Start / end'],['N  P','Next / previous file'],['M','Mute'],['[  ]','Slower / faster'],['L','Loop'],['R','Recenter'],['G','Head tracking'],['H','Headset view'],['F','Full screen'],['Q','180° / 360°'],['W','Layout'],['E','Swap eyes'],['D','Flat screen'],['↑ ↓','Field of view'],['Z  X','Eye convergence'],[',  .','Image shift (line up eyes)'],[';  ’','Eye spacing'],['-  =','Brightness'],['T','Engine: auto / WebGL / WebGPU'],['A','Auto-slow for heavy videos'],['S','Search YouTube (in YouTube mode)'],['?','This list (Esc closes)']];
 function tick(){beep(700,.04)}
 function adj(k,dv){const s=SLD.find(x=>x[0]===k);S[k]=Math.min(s[3],Math.max(s[2],+(S[k]+dv).toFixed(3)));applyView();if(menu)draw();if(!$('#sheet').hidden)renderSheet()}
 function seekTo(f){if(S.kind==='video'&&video.duration)video.currentTime=Math.min(f,.999)*video.duration}
@@ -941,14 +968,16 @@ function ytMake(){
     if(/^https?:/.test(location.protocol))pv.origin=location.origin;
     if(o.list)pv.list=o.list;
     ytP[e]=new YT.Player(e?'ypR':'ypL',{width:YW,height:YH,videoId:o.id,playerVars:pv,events:{
-      onReady:ev=>{if(e)ev.target.mute();else $('#ymsg').textContent='Tap the left video once to start with sound'},
+      onReady:ev=>{if(e)ev.target.mute();else{$('#ymsg').textContent='Tap the left video once to start with sound';try{ytTitle=(ev.target.getVideoData()||{}).title||''}catch(x){}}},
       onError:ev=>{$('#ymsg').textContent='YouTube can’t play this video here (error '+ev.data+'). Some videos block embedding.'}}});
   });
 }
 function ytOpen(o){
-  ytArg=o;ytOn=true;$('#home').hidden=true;$('#ytp').hidden=false;$('#ymsg').textContent='Loading YouTube…';ytBar();
+  ytArg=o;ytOn=true;ytTitle='';$('#home').hidden=true;$('#ytp').hidden=false;$('#ymsg').textContent='Loading YouTube…';ytBar();
+  if(!renderer)init();
+  ['sheet','keys','toast'].forEach(i=>$('#ytp').appendChild($('#'+i)));$('#sheet').hidden=true;closeMenu();ytPD=true;
   try{if(localStorage.getItem('vrGyro')==='1')setGyro(true,true)}catch(e){}
-  const go=()=>{ytMake();ytTimer=setInterval(ytSync,500);ytLoop()};
+  const go=()=>{ytMake();ytTimer=setInterval(ytSync,500)};
   if(window.YT&&YT.Player)go();
   else{window.onYouTubeIframeAPIReady=go;const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';s.onerror=()=>{$('#ymsg').textContent='Could not reach YouTube. Check your connection.'};document.head.appendChild(s)}
 }
@@ -956,12 +985,14 @@ function ytClose(){
   ytOn=false;clearInterval(ytTimer);
   ytP.forEach(p=>{try{p&&p.destroy()}catch(e){}});ytP=[null,null];
   ['L','R'].forEach(s=>{$('#ys'+s).innerHTML='<div id="yp'+s+'"></div>'});
+  closeMenu();['sheet','keys','toast'].forEach(i=>$('#player').appendChild($('#'+i)));$('#sheet').hidden=true;$('#keys').hidden=true;
   $('#ytp').hidden=true;$('#home').hidden=false;
 }
 function ytBar(){const b=$('#ybar');b.classList.remove('hide');clearTimeout(ytBarT);ytBarT=setTimeout(()=>b.classList.add('hide'),5000)}
 const ytAll=f=>ytP.forEach(p=>{try{p&&f(p)}catch(e){}});
 function ytSync(){
   const a=ytP[0],b=ytP[1];if(!a||!b||!a.getPlayerState||!b.getPlayerState)return;
+  if(!ytTitle&&a.getVideoData){try{ytTitle=(a.getVideoData()||{}).title||''}catch(x){}}
   const st=a.getPlayerState(),t0=a.getCurrentTime(),t1=b.getCurrentTime();
   if(st===1){if(b.getPlayerState()!==1)b.playVideo();if(Math.abs(t0-t1)>.3)b.seekTo(t0+.05,true)}
   else if(st===2&&b.getPlayerState()===1)b.pauseVideo();
@@ -979,54 +1010,160 @@ function ytKey(e){
     case 'ArrowLeft':ytSeekBy(e.shiftKey?-60:-10);break;
     case 'KeyM':ytMuteT();break;
     case 'KeyR':recenter();break;
-    case 'KeyD':ytFloat=!ytFloat;$('#yfl').classList.toggle('on',ytFloat);break;
-    case 'KeyH':S.split=!S.split;$('#yhv').classList.toggle('on',S.split);break;
+    case 'KeyD':ytSetFloat(!ytFloat);break;
+    case 'KeyH':S.split=!S.split;chips();break;
     case 'KeyG':setGyro(!S.gyro);break;
     case 'BracketLeft':ytSpd(-1);break;case 'BracketRight':ytSpd(1);break;
     case 'Comma':adj('shift',-1);break;case 'Period':adj('shift',1);break;
     case 'Semicolon':adj('ipd',-1);break;case 'Quote':adj('ipd',1);break;
-    case 'Minus':adj('scr',-.05);break;case 'Equal':adj('scr',.05);break;
-    case 'ArrowUp':adj('cam',-5);break;case 'ArrowDown':adj('cam',5);break;
-    case 'Escape':ytClose();break;
+    case 'Minus':adj('bri',-.05);break;case 'Equal':adj('bri',.05);break;
+    case 'ArrowUp':e.shiftKey?adj('scr',.1):adj('cam',-5);break;case 'ArrowDown':e.shiftKey?adj('scr',-.1):adj('cam',5);break;
+    case 'KeyZ':adj('conv',-.2);break;case 'KeyX':adj('conv',.2);break;
+    case 'KeyN':ytAll(x=>x.nextVideo&&x.nextVideo());break;case 'KeyP':ytAll(x=>x.previousVideo&&x.previousVideo());break;
+    case 'KeyS':if(!menu)openMenu();page='ytsearch';ysTyping=true;draw();break;
+    case 'KeyF':toggleFS();break;case 'Home':ytSeekTo(0);break;case 'End':ytSeekTo(.999);break;
+    case 'Slash':if(e.shiftKey)toggleKeys();break;
+    case 'Escape':if(!$('#keys').hidden)$('#keys').hidden=true;else if(!$('#sheet').hidden)$('#sheet').hidden=true;else if(menu)closeMenu();else ytClose();break;
     default:if(/^Digit\d$/.test(k)){ytSeekTo(+k[5]/10);break}return false;
   }
   return true;
 }
-function ytLoop(){
-  if(!ytOn)return;requestAnimationFrame(ytLoop);
-  const w=innerWidth,h=innerHeight,two=S.split,vw=two?w/2:w,q=ytFloat?headQ():ID_Q,fp=(h/2)/Math.tan(S.cam*R/2);
+const yM=[0,1,2,3].map(()=>new THREE.Matrix4());let ytPD=true,ytTitle='',ytBri=1;
+function yView(q,off,out){yM[0].makeTranslation(off,0,0);out.compose(yv[0].set(0,0,0),q,yv[1].set(1,1,1)).multiply(yM[0]).invert()}
+function ytSetFloat(v){ytFloat=v}
+function ytSpdCycle(){const p=ytP[0];if(!p)return;const rs=(p.getAvailablePlaybackRates&&p.getAvailablePlaybackRates()||[.5,1,1.5,2]).filter(v=>v>=.5&&v<=2),i=(rs.indexOf(p.getPlaybackRate())+1)%rs.length;ytAll(x=>x.setPlaybackRate(rs[i]))}
+function ytMainPage(){
+  const p=ytP[0],d=p&&p.getDuration?p.getDuration():0,c=p&&p.getCurrentTime?p.getCurrentTime():0,sp=p&&p.getPlaybackRate?p.getPlaybackRate():1,pl=p&&p.getPlayerState&&p.getPlayerState()===1,mu=!!(p&&p.isMuted&&p.isMuted());
+  add('title',ytTitle||'YouTube',24,14,820,58,null,false,true);
+  add('x','✕ Close',850,14,150,58,closeMenu);
+  add('seek',fmt(c)+' / '+fmt(d),24,84,976,48,f=>{if(d)ytAll(x=>x.seekTo(f*d,true))}).prog=d?c/d:0;
+  row(146,72,[['yp',pl?'⏸ Pause':'▶ Play',ytPlayPause],['yb','−10 s',()=>ytSeekBy(-10)],['yf','+10 s',()=>ytSeekBy(10)],['ymu',mu?'Unmute':'Mute',ytMuteT,mu]]);
+  row(230,72,[['yfl',ytFloat?'Floating screen':'Fixed to head',()=>ytSetFloat(!ytFloat),ytFloat],['hv','Headset view',()=>{S.split=!S.split},S.split],['gy','Head tracking',()=>setGyro(!S.gyro),S.gyro],['rc','Recenter',()=>{recenter();needPlace=true}]]);
+  row(314,72,[['ysp','Speed '+sp+'×',ytSpdCycle],['ysr','🔎 Search',()=>{page='ytsearch'}],['ds','⚙ Display',()=>{page='disp'}],['ky','⌨ Keys',()=>{page='keys'}],['exit','⏏ Exit YouTube',()=>{closeMenu();ytClose()}]]);
+}
+function ytDispPage(){
+  add('title','YouTube · display',24,14,820,58,null,false,true);
+  add('x','✕ Close',850,14,150,58,closeMenu);
+  SLD.filter(s=>s[5]==='a').forEach(([k,t,mn,mx,fm],i)=>{add('s_'+k,t+': '+fm(S[k]),24,82+i*58,976,52,f=>{S[k]=mn+(mx-mn)*f;applyView()}).prog=(S[k]-mn)/(mx-mn)});
+  row(330,72,[['hf','🎧 Headset fit ›',()=>{page='fit'}],['ky','⌨ Keys',()=>{page='keys'}],['bk','‹ Controls',()=>{page='main'}]]);
+}
+/* the YouTube screen and the headset menu are drawn as 3D-positioned page elements, one set per eye */
+function ytDom(){
+  const w=innerWidth,h=innerHeight,two=S.split,vw=two?w/2:w,kk=YD/6,pm=menu;
+  const fs=(h/2)/Math.tan(S.cam*R/2),fu=(h/2)/Math.tan((two?45:35)*R);
   const sh=two?vw/2-S.ipd/2*6.03+S.shift/100*vw:0,sc=2*YD*Math.tan(32*R)/YW*S.scr;
-  ym[2].compose(yv[0].set(0,0,-YD),ID_Q,yv[1].set(sc,sc,sc));
-  const objT='translate(-50%,-50%) '+objCSS(ym[2]);
+  const qs=ytFloat?camera.quaternion:ID_Q,qu=camera.quaternion;
+  if(ytPD&&pm){ytPD=false;['L','R'].forEach(s=>{$('#ypan'+s).getContext('2d').drawImage(pctx.canvas,0,0)})}
+  const ps=(PW*panel.scale.x*kk)/1024,rs=(0.032*ret.scale.x*kk)/40,bf=S.bri===1?'':'brightness('+S.bri+')';
   for(let e=0;e<2;e++){
-    const eye=$('#ye'+(e?'R':'L'));
-    if(e&&!two){eye.style.display='none';continue}
-    eye.style.display='block';eye.style.left=(e*vw)+'px';eye.style.width=vw+'px';eye.style.perspective=fp+'px';
-    ym[1].makeTranslation(two?(e?1:-1)*S.ipd/2000*(YD/6):0,0,0);
-    ym[0].compose(yv[0].set(0,0,0),q,yv[1].set(1,1,1)).multiply(ym[1]);
-    ym[1].copy(ym[0]).invert();
-    const cs=$('#yc'+(e?'R':'L')).style;cs.width=vw+'px';cs.height=h+'px';
-    cs.transform='translateZ('+fp+'px) '+camCSS(ym[1])+' translate('+(vw/2+(e?-sh:sh))+'px,'+(h/2)+'px)';
-    $('#ys'+(e?'R':'L')).style.transform=objT;
+    const sd=e?'R':'L',off=two?(e?1:-1)*S.ipd/2000*kk:0,eye=$('#ye'+sd),ui=$('#yu'+sd);
+    if(e&&!two){eye.style.display=ui.style.display='none';continue}
+    eye.style.display='block';ui.style.display=pm?'block':'none';
+    [eye,ui].forEach(c=>{c.style.left=(e*vw)+'px';c.style.width=vw+'px'});
+    eye.style.perspective=fs+'px';ui.style.perspective=fu+'px';
+    const tx='translate('+(vw/2+(e?-sh:sh))+'px,'+(h/2)+'px)';
+    yView(qs,off,yM[1]);
+    let cs=$('#yc'+sd).style;cs.width=vw+'px';cs.height=h+'px';cs.transform='translateZ('+fs+'px) '+camCSS(yM[1])+' '+tx;
+    yM[2].makeRotationY((e?-1:1)*S.conv*R).multiply(yM[3].compose(yv[0].set(0,0,-YD),ID_Q,yv[1].set(sc,sc,sc)));
+    const so=$('#ys'+sd).style;so.transform='translate(-50%,-50%) '+objCSS(yM[2]);so.filter=bf;
+    if(pm){
+      yView(qu,off,yM[1]);
+      cs=$('#ycu'+sd).style;cs.width=vw+'px';cs.height=h+'px';cs.transform='translateZ('+fu+'px) '+camCSS(yM[1])+' '+tx;
+      yM[2].compose(yv[0].copy(panel.position).multiplyScalar(kk),panel.quaternion,yv[1].set(ps,ps,ps));
+      $('#ypan'+sd).style.transform='translate(-50%,-50%) '+objCSS(yM[2]);
+      yM[2].compose(yv[0].copy(ret.position).multiplyScalar(kk),ret.quaternion,yv[1].set(rs,rs,rs));
+      $('#yret'+sd).style.transform='translate(-50%,-50%) '+objCSS(yM[2]);
+    }
   }
 }
 $('#ytgo').onclick=()=>{const o=ytParse($('#yturl').value);if(!o){alert('That doesn’t look like a YouTube link.');return}ytOpen(o)};
-$('#ybk').onclick=ytClose;$('#ypp').onclick=ytPlayPause;$('#ym10').onclick=()=>ytSeekBy(-10);$('#yp10').onclick=()=>ytSeekBy(10);$('#ymu').onclick=ytMuteT;
-$('#yfl').onclick=()=>{ytFloat=!ytFloat;$('#yfl').classList.toggle('on',ytFloat)};$('#yrc').onclick=()=>recenter();$('#ygy').onclick=()=>setGyro(!S.gyro);
-$('#yhv').onclick=()=>{S.split=!S.split;$('#yhv').classList.toggle('on',S.split)};
+$('#ybk').onclick=ytClose;$('#ypp').onclick=ytPlayPause;$('#ym10').onclick=()=>ytSeekBy(-10);$('#yp10').onclick=()=>ytSeekBy(10);
+$('#ycfg').onclick=()=>{const s=$('#sheet');s.hidden=!s.hidden;if(!s.hidden){renderSheet();ytBar()}};
 $('#ytp').addEventListener('pointerdown',e=>{ytBar();if(e.target.closest('#ybar')||e.target.tagName==='IFRAME')return;ytd={x:e.clientX,y:e.clientY}});
 addEventListener('pointermove',e=>{if(!ytd||!ytOn)return;const dx=e.clientX-ytd.x,dy=e.clientY-ytd.y;ytd.x=e.clientX;ytd.y=e.clientY;
   if(S.gyro){S.yaw+=dx*.005;S.pit=Math.max(-1.4,Math.min(1.4,S.pit+dy*.005))}else{S.lon+=dx*.005;S.lat=Math.max(-1.5,Math.min(1.5,S.lat+dy*.005))}});
 addEventListener('pointerup',()=>{ytd=null});
 
+/* ---------- YouTube search (official API with your own free key) and hand-off from Safari ---------- */
+let ysq='',ysRes=[],ysNext='',ysPage=0,ysTyping=false,ysBusy=false,ysErr='';
+const ysKey=()=>{try{return localStorage.getItem('ytApiKey')||''}catch(e){return ''}};
+const dec=s=>{const t=document.createElement('textarea');t.innerHTML=s;return t.value};
+const isoSec=d=>{const m=/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d||'');return m?(+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0):0};
+async function ytApi(path,params){
+  const k=ysKey();if(!k)throw new Error('Add a YouTube API key first');
+  const u=new URL('https://www.googleapis.com/youtube/v3/'+path);Object.entries(params).forEach(([a,b])=>u.searchParams.set(a,b));u.searchParams.set('key',k);
+  const j=await(await fetch(u)).json();if(j.error)throw new Error(j.error.message||'YouTube API error');return j;
+}
+async function ytFind(q,pt){
+  const p=pt?{pageToken:pt}:{};
+  const j=q?await ytApi('search',{part:'snippet',type:'video',videoEmbeddable:'true',maxResults:12,q,...p}):await ytApi('videos',{part:'snippet,contentDetails',chart:'mostPopular',regionCode:(navigator.language||'en-US').split('-')[1]||'US',maxResults:12,...p});
+  const items=(j.items||[]).map(i=>({id:q?i.id.videoId:i.id,title:dec(i.snippet.title),ch:dec(i.snippet.channelTitle),thumb:(i.snippet.thumbnails.medium||i.snippet.thumbnails.default||{}).url||'',dur:i.contentDetails?isoSec(i.contentDetails.duration):0}));
+  if(q&&items.length){const d=await ytApi('videos',{part:'contentDetails',id:items.map(x=>x.id).join(',')}),m={};(d.items||[]).forEach(v=>{m[v.id]=isoSec(v.contentDetails.duration)});items.forEach(x=>{x.dur=m[x.id]||0})}
+  return{items,next:j.nextPageToken||''};
+}
+async function ytRun(q,pt){ysBusy=true;ysErr='';refreshYS();try{const r=await ytFind(q,pt);ysRes=r.items;ysNext=r.next;ysq=q}catch(e){ysErr=e.message;ysRes=[]}ysBusy=false;ysPage=0;refreshYS()}
+function ytPick(id){
+  if(ytOn){ytTitle='';ytAll(p=>p.loadVideoById(id));closeMenu();$('#sheet').hidden=true;$('#ymsg').textContent='Tap the left video once if it does not start'}
+  else ytOpen({id,t:0,list:''});
+}
+function refreshYS(){
+  ['#ysui','#ysui2'].forEach(s=>{const b=$(s);if(b&&b.getClientRects().length)ytSearchUI(b)});
+  if(menu&&page==='ytsearch')draw();
+}
+function ytSearchUI(box){
+  box.innerHTML='';
+  if(!ysKey()){
+    box.appendChild(mk('div','info','Searching needs a free YouTube Data API key: in Google Cloud Console enable “YouTube Data API v3”, then create an API key. It is saved only on this phone.'));
+    const r=mk('div','libctl'),i=mk('input');i.type='text';i.placeholder='Paste your API key';i.setAttribute('autocapitalize','off');
+    const b=mk('button','','Save key');b.onclick=()=>{try{localStorage.setItem('ytApiKey',i.value.trim())}catch(e){}refreshYS()};
+    r.append(i,b);box.appendChild(r);return;
+  }
+  const r=mk('div','libctl'),q=mk('input');q.type='search';q.placeholder='Search YouTube';q.value=ysq;
+  const go=()=>ytRun(q.value.trim());q.onkeydown=e=>{if(e.key==='Enter'){e.stopPropagation();go()}};
+  const b1=mk('button','','Search'),b2=mk('button','','Popular'),b3=mk('button','','Change key');
+  b1.onclick=go;b2.onclick=()=>ytRun('');b3.onclick=()=>{try{localStorage.removeItem('ytApiKey')}catch(e){}refreshYS()};
+  r.append(q,b1,b2,b3);box.appendChild(r);
+  if(ysBusy)box.appendChild(mk('div','info','Searching…'));
+  if(ysErr)box.appendChild(mk('div','info','⚠ '+ysErr));
+  ysRes.forEach(v=>{
+    const b=mk('button','yrow'),im=mk('img','yti');im.src=v.thumb;im.alt='';im.loading='lazy';
+    const t=mk('div','');t.append(mk('b','',v.title),mk('i','',(v.dur?fmt(v.dur)+' · ':'')+v.ch));
+    b.append(im,t);b.onclick=()=>ytPick(v.id);box.appendChild(b);
+  });
+  if(ysNext&&ysRes.length){const w=mk('div','libctl'),m=mk('button','','More results');m.onclick=()=>ytRun(ysq,ysNext);w.appendChild(m);box.appendChild(w)}
+}
+function ytSearchPage(){
+  add('title','YouTube search',24,14,640,58,null,false,true);
+  add('bk','‹ Back',700,14,140,58,()=>{page='main';ysTyping=false});
+  add('x','✕ Close',850,14,150,58,closeMenu);
+  add('qf',(ysTyping?'⌨ ':'🔎 ')+(ysq||(ysTyping?'':'Look here, press Space, then type…'))+(ysTyping?'▌':''),24,82,976,48,()=>{ysTyping=!ysTyping},ysTyping,true);
+  const per=4,st=ysPage*per;
+  if(ysBusy)add('busy','Searching…',24,140,976,50,null,false,true);
+  else if(ysErr)add('err','⚠ '+ysErr,24,140,976,50,null,false,true);
+  else if(!ysRes.length)add('none',ysKey()?'Type a search and press Enter, or tap Popular.':'Add a YouTube API key first (settings sheet or start screen).',24,140,976,50,null,false,true);
+  ysRes.slice(st,st+per).forEach((v,i)=>add('r'+i,(v.dur?fmt(v.dur)+'  ':'')+v.title+' — '+v.ch,24,140+i*58,976,52,()=>ytPick(v.id),false,true));
+  row(384,64,[['sp','▲ Prev',()=>{ysPage=Math.max(0,ysPage-1)}],['sn','▼ Next',()=>{if((ysPage+1)*per<ysRes.length)ysPage++;else if(ysNext)ytRun(ysq,ysNext)}],['pop','🔥 Popular',()=>ytRun('')]]);
+}
+function bmCode(){const base=location.origin+location.pathname;return "javascript:(function(){var v=document.querySelector('video'),t=v?Math.floor(v.currentTime||0):0;location.href='"+base+"?u='+encodeURIComponent(location.href)+'&t='+t})()"}
+$('#bmcopy').onclick=async()=>{const c=bmCode();try{await navigator.clipboard.writeText(c);$('#bmmsg').textContent='Copied. Now follow step 2.'}catch(e){window.prompt('Copy this code:',c);$('#bmmsg').textContent=''}};
+
 function onKey(e){
-  if((!started&&!ytOn)||(e.target.tagName==='INPUT'&&e.target.type==='text'))return;
+  if((!started&&!ytOn)||(e.target.tagName==='INPUT'&&(e.target.type==='text'||e.target.type==='search')))return;
+  if(ytOn&&menu&&page==='ytsearch'&&ysTyping){
+    if(e.type==='keydown'){
+      if(e.key==='Enter'){e.preventDefault();ysTyping=false;ytRun(ysq.trim())}
+      else if(e.key==='Escape'){e.preventDefault();ysTyping=false;draw()}
+      else if(e.key==='Backspace'){e.preventDefault();ysq=ysq.slice(0,-1);draw()}
+      else if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();ysq+=e.key;draw()}
+    }
+    return;
+  }
   const k=e.code;
   if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();
   if(k==='Space'||e.key===' '){
     e.preventDefault();if(e.repeat||e.type==='keyup')return;
     if(sp){clearTimeout(sp);sp=0;recenter();needPlace=true;beep(520,.05);setTimeout(()=>beep(520,.05),100)}
-    else sp=setTimeout(()=>{sp=0;ytOn?ytPlayPause():select()},280);
+    else sp=setTimeout(()=>{sp=0;select()},280);
   }else if(e.type==='keydown'){
     if(ytOn){if(ytKey(e)){e.preventDefault();tick()}return}
     const dg=/^Digit\d$/.test(k)?+k[5]:-1;
@@ -1098,6 +1235,11 @@ if(location.protocol==='http:'){
   }).catch(()=>{});
   $('#go').onclick=()=>{const u=$('#url').value.trim();if(u)openVideo(u,decodeURIComponent(u.split('/').pop().split('?')[0]))};
 }
+/* open a video handed over from Safari (bookmark, Shortcut or link) */
+ytSearchUI($('#ysui'));
+{const qs=new URLSearchParams(location.search),hu=qs.get('u')||qs.get('yt');
+ if(hu){const o=ytParse(hu);history.replaceState(null,'',location.pathname);
+  if(o){const tt=+qs.get('t');if(tt)o.t=tt;ytOpen(o)}else{$('#yturl').value=hu;alert('I can only open YouTube links this way for now. The link has been pasted into the YouTube box.')}}}
 </script>
 </body>
 </html>
