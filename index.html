@@ -1,4 +1,4 @@
-<!-- VR Video Player - version 20 -->
+<!-- VR Video Player - version 21 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -112,12 +112,14 @@ small{color:var(--mut);display:block;margin-top:18px}
   <input id="addf" type="file" accept="video/*,image/*,.mp4,.m4v,.mov,.heic" multiple hidden>
   <div class="card"><h2>YOUTUBE (EXPERIMENTAL)</h2>
     <div style="display:flex;gap:8px"><input id="yturl" type="text" placeholder="Paste a YouTube link" autocapitalize="off" autocorrect="off"><button class="btn" id="ytgo">Open</button></div>
-    <div style="font-size:13px;color:var(--mut);margin-top:8px;line-height:1.5">Shows the video twice, once for each eye, on a flat screen that stays put when you turn your head. Tap the left video once to start it with sound, then put the phone in the headset. Settings, the headset menu and the keyboard shortcuts work here too. Some videos don’t allow embedding.</div></div>
+    <div style="font-size:13px;color:var(--mut);margin-top:8px;line-height:1.5">Shows the video twice, once for each eye, on a flat screen that stays put when you turn your head. Tap the left video once to start it with sound, then put the phone in the headset. Settings, the headset menu and the keyboard shortcuts work here too. Some videos don’t allow embedding. Each eye plays its own copy, so ads can differ; the pair lines up again when the video starts. For a single in-step copy, see VR Bridge below.</div></div>
   <div class="card"><h2>SEARCH YOUTUBE</h2><div id="ysui"></div></div>
   <div class="card"><h2>BROWSE YOUTUBE IN SAFARI, WATCH HERE</h2>
     <div style="font-size:13px;color:var(--mut);line-height:1.55">Use YouTube normally in Safari, with sign-in and recommendations. When you find a video, tap a bookmark that sends it to this player. One-time setup:<br>1. Tap <b>Copy bookmark code</b> below.<br>2. In Safari, bookmark any page (Share, then Add Bookmark). Open Bookmarks, tap Edit, open that bookmark, rename it “Open in VR”, and paste the code in place of the web address.<br>3. On a YouTube page, open Bookmarks and tap <b>Open in VR</b>.</div>
     <button class="btn" id="bmcopy" style="margin-top:10px;width:100%;padding:12px">Copy bookmark code</button>
     <div id="bmmsg" style="font-size:13px;margin-top:6px;color:var(--mut)"></div></div>
+  <div class="card"><h2>WATCH ANY SITE’S VIDEO (SAFARI + A FREE EXTENSION)</h2>
+    <div style="font-size:13px;color:var(--mut);line-height:1.55">Chrome on iPhone can’t run extensions, but Safari can. The <b>VR Bridge</b> script runs inside the page you are browsing (YouTube, news sites, anything with a video) and shows that page’s own single video in the headset, so ads, sound and timing stay in step.<br>1. In the App Store, install <b>Userscripts</b> (free). In Settings, Apps, Safari, Extensions, turn it on and allow all websites.<br>2. In Safari, open <a href="vr-bridge.user.js">vr-bridge.user.js</a> from this site and install it when Userscripts offers.<br>3. Browse in Safari. Tap the 🥽 button that appears on pages with a video, then put the phone in the headset. Esc exits, and ? lists the keys.</div></div>
   <div class="card" id="hlib" hidden><h2>YOUR FILES</h2><div id="hbox"></div></div>
   <button class="btn" id="tt" style="margin-top:16px;width:100%;padding:14px;font-size:16px">Test head tracking</button>
   <div id="gs" style="font-size:14px;margin-top:8px;color:var(--mut)"></div>
@@ -460,8 +462,8 @@ function renderSheet(){
     ex.items.forEach(it=>{const b=el('button','it',(it.d?'📁  ':ICON(it.k)+'  ')+it.k);b.onclick=it.go;sh.appendChild(b)})}
   sh.scrollTop=top;
 }
-/* VR Video Player version 20 */
-const VERSION=20;
+/* VR Video Player version 21 */
+const VERSION=21;
 {const s=document.createElement('small');s.textContent='Version '+VERSION;$('#home').appendChild(s)}
 if(/^https?:$/.test(location.protocol)){
   fetch(location.pathname,{cache:'no-store'}).then(r=>r.text()).then(t=>{
@@ -973,7 +975,7 @@ function ytMake(){
   });
 }
 function ytOpen(o){
-  ytArg=o;ytOn=true;ytTitle='';$('#home').hidden=true;$('#ytp').hidden=false;$('#ymsg').textContent='Loading YouTube…';ytBar();
+  ytArg=o;ytOn=true;ytTitle='';ytDur=o.dur||0;ytHold=false;$('#home').hidden=true;$('#ytp').hidden=false;$('#ymsg').textContent='Loading YouTube…';ytBar();
   if(!renderer)init();
   ['sheet','keys','toast'].forEach(i=>$('#ytp').appendChild($('#'+i)));$('#sheet').hidden=true;closeMenu();ytPD=true;
   try{if(localStorage.getItem('vrGyro')==='1')setGyro(true,true)}catch(e){}
@@ -990,9 +992,20 @@ function ytClose(){
 }
 function ytBar(){const b=$('#ybar');b.classList.remove('hide');clearTimeout(ytBarT);ytBarT=setTimeout(()=>b.classList.add('hide'),5000)}
 const ytAll=f=>ytP.forEach(p=>{try{p&&f(p)}catch(e){}});
+let ytDur=0,ytHold=false;
+const ytAd=p=>{try{if(p.getAdState&&p.getAdState()===1)return true}catch(e){}try{const d=p.getDuration();return ytDur>0&&d>0&&Math.abs(d-ytDur)>1.5}catch(e){return false}};
 function ytSync(){
   const a=ytP[0],b=ytP[1];if(!a||!b||!a.getPlayerState||!b.getPlayerState)return;
   if(!ytTitle&&a.getVideoData){try{ytTitle=(a.getVideoData()||{}).title||''}catch(x){}}
+  if(!ytDur){const d0=a.getDuration(),d1=b.getDuration();if(d0>1&&Math.abs(d0-d1)<.5&&a.getPlayerState()!==1&&b.getPlayerState()!==1)ytDur=d0}
+  const ad0=ytAd(a),ad1=ytAd(b);
+  if(ad0||ad1){
+    ytHold=true;$('#ymsg').textContent='Ads play separately in each eye. Both eyes line up when the video starts.';
+    if(!ad0&&a.getPlayerState()===1)a.pauseVideo();
+    if(!ad1&&b.getPlayerState()===1)b.pauseVideo();
+    return;
+  }
+  if(ytHold){ytHold=false;$('#ymsg').textContent='';const t=Math.min(a.getCurrentTime(),b.getCurrentTime());a.seekTo(t,true);b.seekTo(t,true);a.playVideo();b.playVideo();return}
   const st=a.getPlayerState(),t0=a.getCurrentTime(),t1=b.getCurrentTime();
   if(st===1){if(b.getPlayerState()!==1)b.playVideo();if(Math.abs(t0-t1)>.3)b.seekTo(t0+.05,true)}
   else if(st===2&&b.getPlayerState()===1)b.pauseVideo();
@@ -1102,9 +1115,9 @@ async function ytFind(q,pt){
   return{items,next:j.nextPageToken||''};
 }
 async function ytRun(q,pt){ysBusy=true;ysErr='';refreshYS();try{const r=await ytFind(q,pt);ysRes=r.items;ysNext=r.next;ysq=q}catch(e){ysErr=e.message;ysRes=[]}ysBusy=false;ysPage=0;refreshYS()}
-function ytPick(id){
-  if(ytOn){ytTitle='';ytAll(p=>p.loadVideoById(id));closeMenu();$('#sheet').hidden=true;$('#ymsg').textContent='Tap the left video once if it does not start'}
-  else ytOpen({id,t:0,list:''});
+function ytPick(id,dur){
+  if(ytOn){ytTitle='';ytDur=dur||0;ytHold=false;ytAll(p=>p.loadVideoById(id));closeMenu();$('#sheet').hidden=true;$('#ymsg').textContent='Tap the left video once if it does not start'}
+  else ytOpen({id,t:0,list:'',dur});
 }
 function refreshYS(){
   ['#ysui','#ysui2'].forEach(s=>{const b=$(s);if(b&&b.getClientRects().length)ytSearchUI(b)});
@@ -1128,7 +1141,7 @@ function ytSearchUI(box){
   ysRes.forEach(v=>{
     const b=mk('button','yrow'),im=mk('img','yti');im.src=v.thumb;im.alt='';im.loading='lazy';
     const t=mk('div','');t.append(mk('b','',v.title),mk('i','',(v.dur?fmt(v.dur)+' · ':'')+v.ch));
-    b.append(im,t);b.onclick=()=>ytPick(v.id);box.appendChild(b);
+    b.append(im,t);b.onclick=()=>ytPick(v.id,v.dur);box.appendChild(b);
   });
   if(ysNext&&ysRes.length){const w=mk('div','libctl'),m=mk('button','','More results');m.onclick=()=>ytRun(ysq,ysNext);w.appendChild(m);box.appendChild(w)}
 }
@@ -1141,7 +1154,7 @@ function ytSearchPage(){
   if(ysBusy)add('busy','Searching…',24,140,976,50,null,false,true);
   else if(ysErr)add('err','⚠ '+ysErr,24,140,976,50,null,false,true);
   else if(!ysRes.length)add('none',ysKey()?'Type a search and press Enter, or tap Popular.':'Add a YouTube API key first (settings sheet or start screen).',24,140,976,50,null,false,true);
-  ysRes.slice(st,st+per).forEach((v,i)=>add('r'+i,(v.dur?fmt(v.dur)+'  ':'')+v.title+' — '+v.ch,24,140+i*58,976,52,()=>ytPick(v.id),false,true));
+  ysRes.slice(st,st+per).forEach((v,i)=>add('r'+i,(v.dur?fmt(v.dur)+'  ':'')+v.title+' — '+v.ch,24,140+i*58,976,52,()=>ytPick(v.id,v.dur),false,true));
   row(384,64,[['sp','▲ Prev',()=>{ysPage=Math.max(0,ysPage-1)}],['sn','▼ Next',()=>{if((ysPage+1)*per<ysRes.length)ysPage++;else if(ysNext)ytRun(ysq,ysNext)}],['pop','🔥 Popular',()=>ytRun('')]]);
 }
 function bmCode(){const base=location.origin+location.pathname;return "javascript:(function(){var v=document.querySelector('video'),t=v?Math.floor(v.currentTime||0):0;location.href='"+base+"?u='+encodeURIComponent(location.href)+'&t='+t})()"}
